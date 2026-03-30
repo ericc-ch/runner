@@ -1,6 +1,6 @@
 // Import necessary modules from the libraries
 import { Args, Command, Options } from "@effect/cli"
-import { BunContext, BunRuntime } from "@effect/platform-bun"
+import { NodeContext, NodeRuntime } from "@effect/platform-node"
 import { Console, Effect, pipe } from "effect"
 
 const text = Args.text({ name: "text" })
@@ -16,4 +16,4 @@ const cli = Command.run(command, {
   version: "v1.0.0",
 })
 
-pipe(cli(process.argv), Effect.provide(BunContext.layer), BunRuntime.runMain)
+pipe(cli(process.argv), Effect.provide(NodeContext.layer), NodeRuntime.runMain)

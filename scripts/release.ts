@@ -1,8 +1,8 @@
-#!/usr/bin/env bun
+#!/usr/bin/env tsx
 
 import { Command as CliCommand, Options } from "@effect/cli"
 import { Command } from "@effect/platform"
-import { BunContext, BunRuntime } from "@effect/platform-bun"
+import { NodeContext, NodeRuntime } from "@effect/platform-node"
 import { Effect, pipe } from "effect"
 
 const dryRun = pipe(
@@ -79,4 +79,4 @@ const cli = CliCommand.run(release, {
   version: "0.0.0",
 })
 
-cli(process.argv).pipe(Effect.provide(BunContext.layer), BunRuntime.runMain)
+cli(process.argv).pipe(Effect.provide(NodeContext.layer), NodeRuntime.runMain)
