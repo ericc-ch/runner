@@ -1,0 +1,19 @@
+{
+  "file_scan_exclusions": [".git/", ".context/"],
+  "lsp": {
+    "vtsls": {
+      "settings": {
+        "vtsls": {
+          "autoUseWorkspaceTsdk": true
+        }
+      }
+    },
+    "oxlint": {
+      "initialization_options": {
+        "settings": {
+          "typeAware": true
+        }
+      }
+    }
+  }
+}

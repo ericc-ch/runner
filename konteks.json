@@ -1,0 +1,4 @@
+{
+  "dir": ".context/",
+  "repos": ["https://github.com/Effect-TS/effect.git"]
+}
