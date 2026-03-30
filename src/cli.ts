@@ -1,19 +1,14 @@
-// Import necessary modules from the libraries
-import { Args, Command, Options } from "@effect/cli"
-import { NodeContext, NodeRuntime } from "@effect/platform-node"
-import { Console, Effect, pipe } from "effect"
+import { Argument, Command, Flag } from "effect/unstable/cli"
+import { NodeRuntime, NodeServices } from "@effect/platform-node"
+import { Console, Effect } from "effect"
 
-const text = Args.text({ name: "text" })
-const bold = Options.boolean("bold").pipe(Options.withAlias("b"))
+const text = Argument.string("text")
+const bold = Flag.boolean("bold").pipe(Flag.withAlias("b"))
 
 const command = Command.make("hello-world", { text, bold }, (args) =>
   Console.log("Hello World", args.text, args.bold ? "bold" : "normal"),
 )
 
-// Set up the CLI application
-const cli = Command.run(command, {
-  name: "Hello World CLI",
-  version: "v1.0.0",
-})
+const program = Command.run(command, { version: "v1.0.0" })
 
-pipe(cli(process.argv), Effect.provide(NodeContext.layer), NodeRuntime.runMain)
+NodeRuntime.runMain(Effect.provide(program, NodeServices.layer))

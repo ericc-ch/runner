@@ -1,66 +1,58 @@
 #!/usr/bin/env tsx
 
-import { Command as CliCommand, Options } from "@effect/cli"
-import { Command } from "@effect/platform"
-import { NodeContext, NodeRuntime } from "@effect/platform-node"
-import { Effect, pipe } from "effect"
+import { Command, Flag } from "effect/unstable/cli"
+import { ChildProcess } from "effect/unstable/process"
+import { NodeRuntime, NodeServices } from "@effect/platform-node"
+import { Effect, Stream } from "effect"
 
-const dryRun = pipe(
-  Options.boolean("dry-run"),
-  Options.withAlias("d"),
-  Options.withDefault(false),
-  Options.withDescription("Print release notes without creating release"),
+const runCommand = (cmd: string, args: string[]) =>
+  Effect.gen(function* () {
+    const handle = yield* ChildProcess.make(cmd, args)
+    const chunks = yield* Stream.runCollect(handle.stdout)
+    const textStream = Stream.decodeText(Stream.fromArray(chunks))
+    const output = yield* Stream.runCollect(textStream)
+    return output.join("").trim()
+  }).pipe(Effect.scoped)
+
+const dryRun = Flag.boolean("dry-run").pipe(
+  Flag.withAlias("d"),
+  Flag.withDefault(false),
+  Flag.withDescription("Print release notes without creating release"),
 )
 
-const release = CliCommand.make(
-  "release",
-  { dryRun },
-  Effect.fn(function* ({ dryRun }) {
-    // 1. Get current tag
-    const currentTag = yield* Command.make(
-      "git",
+const release = Command.make("release", { dryRun }, ({ dryRun }) =>
+  Effect.gen(function* () {
+    const currentTag = yield* runCommand("git", [
       "describe",
       "--tags",
       "--exact-match",
       "HEAD",
-    ).pipe(
-      Command.string,
-      Effect.map((output) => output.trim()),
-    )
+    ])
 
-    // 2. Get previous tag
-    const prevTag = yield* Command.make(
-      "git",
+    const prevTag = yield* runCommand("git", [
       "describe",
       "--tags",
       "--abbrev=0",
       `${currentTag}^`,
-    ).pipe(
-      Command.string,
-      Effect.map((output) => output.trim()),
-    )
+    ])
 
-    // 3. Get commits
     const range = prevTag ? `${prevTag}..${currentTag}` : currentTag
-    const notes = yield* Command.make(
-      "git",
+    const notes = yield* runCommand("git", [
       "log",
       range,
       "--pretty=format:%s",
       "--no-merges",
-    ).pipe(Command.string)
+    ])
 
     yield* Effect.log(`Current tag: ${currentTag}`)
     yield* Effect.log(`Previous tag: ${prevTag}`)
     yield* Effect.log(`Range: ${range}`)
     yield* Effect.log(`Found ${notes.split("\n").length} commits`)
 
-    // 4. Output or Release
     if (dryRun) {
       yield* Effect.log(`Release notes: ${notes}`)
     } else {
-      yield* Command.make(
-        "gh",
+      yield* runCommand("gh", [
         "release",
         "create",
         currentTag,
@@ -68,15 +60,12 @@ const release = CliCommand.make(
         currentTag,
         "--notes",
         notes,
-      ).pipe(Command.string)
+      ])
       yield* Effect.log(`Release created: ${currentTag}`)
     }
   }),
 )
 
-const cli = CliCommand.run(release, {
-  name: "Release Script",
-  version: "0.0.0",
-})
+const program = Command.run(release, { version: "0.0.0" })
 
-cli(process.argv).pipe(Effect.provide(NodeContext.layer), NodeRuntime.runMain)
+NodeRuntime.runMain(Effect.provide(program, NodeServices.layer))
