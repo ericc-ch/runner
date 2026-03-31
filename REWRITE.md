@@ -11,7 +11,7 @@ Simple TypeScript execution for AI agents. No sandbox, no permissions. Let the a
 └─────────────┘     │  Code runs directly in main process      │           ▲
   ┌─────────────┐   │  - Full access to fetch, fs, child_process│           │
   │  CLI        │──▶│  - Can import any npm package            │───────────┘
-  │  user       │   │  - Plugins inject globals via hooks      │
+  │  user       │   │  - Plugins inject context via hooks     │
   └─────────────┘   │                                          │
                     └──────────────────────────────────────────┘
 ```
@@ -46,7 +46,14 @@ export default defineConfig({
     async () => ({
       // inline plugin
       beforeRun() {
-        return { globals: { foo: "bar" } }
+        return {
+          context: {
+            foo: {
+              value: "bar",
+              description: "Example inline context",
+            },
+          },
+        }
       },
     }),
   ],
@@ -89,6 +96,11 @@ Plugins extend Runner via hooks. Inspired by OpenCode's plugin architecture.
 // Plugin returns Hooks object
 type Plugin = () => Promise<Hooks>
 
+interface ContextItem {
+  value: unknown
+  description?: string
+}
+
 interface Hooks {
   // Global lifecycle
   setup?: () => Promise<void> // Plugin init (once)
@@ -101,7 +113,7 @@ interface Hooks {
 
 interface RunInput {
   source: string
-  globals: Record<string, unknown>
+  context: Record<string, ContextItem>
 }
 
 interface RunOutput {
@@ -119,7 +131,7 @@ plugins.map(p => p())  →  hooks[]
     hooks.setup (each once)
          ↓
 ──────────────────────────────────────────
-│  state = { source, globals: {} }        │
+│  state = { source, context: {} }        │
 │         ↓                               │
 │  hooks.beforeRun (each, merge return)  │
 │    state = { ...state, ...returned }    │
@@ -153,9 +165,12 @@ const consolePlugin = async () => {
     beforeRun() {
       logs = [] // Reset each run
       return {
-        globals: {
+        context: {
           console: {
-            log: (...args) => logs.push(args.join(" ")),
+            value: {
+              log: (...args) => logs.push(args.join(" ")),
+            },
+            description: "Captured console for logging",
           },
         },
       }
@@ -184,10 +199,19 @@ const playwrightPlugin = async () => {
     async beforeRun() {
       const page = await browser.newPage()
       return {
-        globals: {
-          page,
-          browser,
-          playwright: require("playwright"),
+        context: {
+          browser: {
+            value: browser,
+            description: "Playwright browser instance for web automation",
+          },
+          page: {
+            value: page,
+            description: "Active browser page, use for navigation/clicks",
+          },
+          playwright: {
+            value: require("playwright"),
+            description: "Playwright module with browser launchers",
+          },
         },
       }
     },
@@ -228,9 +252,9 @@ const githubPlugin = async () => {
   return {
     beforeRun() {
       return {
-        globals: {
-          tools: {
-            github: {
+        context: {
+          github: {
+            value: {
               issues: {
                 list: async (opts: { owner: string; repo: string }) => {
                   const res = await fetch(
@@ -240,6 +264,7 @@ const githubPlugin = async () => {
                 },
               },
             },
+            description: "GitHub API client for issues, repos, PRs",
           },
         },
       }
@@ -261,7 +286,14 @@ const databasePlugin = async () => {
       db = new Database("./data.db")
     },
     beforeRun() {
-      return { globals: { db } }
+      return {
+        context: {
+          db: {
+            value: db,
+            description: "SQLite database connection (better-sqlite3)",
+          },
+        },
+      }
     },
     teardown() {
       db?.close()
@@ -270,12 +302,65 @@ const databasePlugin = async () => {
 }
 ```
 
+## Context Discovery
+
+Plugins inject context items with metadata. Agents can discover available context at runtime.
+
+### Context Items
+
+```ts
+interface ContextItem {
+  value: unknown // The actual value (browser, db, etc.)
+  description?: string // Human-readable description for the agent
+}
+```
+
+### Built-in Discovery Methods
+
+The runner injects `list()` and `search()` into the context:
+
+```ts
+// List all available context
+context.list()
+// => [{ name: "browser", description: "Playwright browser instance" }, ...]
+
+// Search context by name or description
+context.search("web")
+// => [{ name: "browser", description: "Playwright browser instance for web automation" }]
+```
+
+### Agent Usage Example
+
+```ts
+// Agent discovers what's available
+const available = context.list()
+
+// Agent searches for specific functionality
+const webTools = context.search("browser")
+
+// Agent uses the context directly
+await context.browser.navigate("https://example.com")
+await context.page.click("button")
+```
+
+### Why This Matters
+
+1. **Self-documenting**: Context carries its own description
+2. **Discoverable**: Agent doesn't need all context in system prompt
+3. **Searchable**: Agent can find tools without knowing exact names
+4. **Extensible**: Third-party plugins can add semantic search, etc.
+
 ## Core Implementation
 
 ### types.ts
 
 ```ts
 export type Plugin = () => Promise<Hooks>
+
+export interface ContextItem {
+  value: unknown
+  description?: string
+}
 
 export interface Hooks {
   setup?: () => Promise<void>
@@ -286,7 +371,7 @@ export interface Hooks {
 
 export interface RunInput {
   source: string
-  globals: Record<string, unknown>
+  context: Record<string, ContextItem>
 }
 
 export interface RunOutput {
@@ -380,17 +465,20 @@ export async function run(source: string, plugins: Plugin[]): Promise<unknown> {
 
   try {
     // beforeRun phase - functional transform
-    let state: RunInput = { source, globals: {} }
+    let state: RunInput = { source, context: {} }
     for (const hook of hooks) {
       const result = await hook.beforeRun?.(state)
       if (result) state = { ...state, ...result }
     }
 
+    // Build context with built-in discovery methods
+    const contextForExecution = buildContext(state.context)
+
     // Execute
     let result: unknown
     let error: Error | null = null
     try {
-      result = await execute(state.source, state.globals)
+      result = await execute(state.source, contextForExecution)
     } catch (e) {
       error = e instanceof Error ? e : new Error(String(e))
     }
@@ -411,16 +499,45 @@ export async function run(source: string, plugins: Plugin[]): Promise<unknown> {
   }
 }
 
+function buildContext(context: Record<string, ContextItem>) {
+  const ctx: Record<string, unknown> = {}
+
+  // Unwrap context items to their values
+  for (const [key, item] of Object.entries(context)) {
+    ctx[key] = item.value
+  }
+
+  // Add built-in discovery methods
+  ctx.list = () =>
+    Object.entries(context).map(([name, item]) => ({
+      name,
+      description: item.description,
+    }))
+
+  ctx.search = (query: string) => {
+    const q = query.toLowerCase()
+    return Object.entries(context)
+      .filter(([name, item]) => {
+        const nameMatch = name.toLowerCase().includes(q)
+        const descMatch = item.description?.toLowerCase().includes(q)
+        return nameMatch || descMatch
+      })
+      .map(([name, item]) => ({ name, description: item.description }))
+  }
+
+  return ctx
+}
+
 async function execute(
   source: string,
-  globals: Record<string, unknown>,
+  context: Record<string, unknown>,
 ): Promise<unknown> {
-  const params = Object.keys(globals)
+  const params = Object.keys(context)
   const fn = new Function(
     ...params,
     `"use strict"; return (async () => {\n${source}\n})();`,
   )
-  return fn(...Object.values(globals))
+  return fn(...Object.values(context))
 }
 ```
 
@@ -488,7 +605,14 @@ import type { Plugin } from 'runner'
 export default function examplePlugin(): Plugin {
   return async () => ({
     beforeRun() {
-      return { globals: { example: true } }
+      return {
+        context: {
+          example: {
+            value: true,
+            description: "Example context item",
+          },
+        },
+      }
     }
   })
 }
@@ -519,7 +643,7 @@ const server = new McpServer({ name: "runner", version: "0.1.0" })
 
 server.tool(
   "execute",
-  "Execute TypeScript with full Node.js access. Plugins provide globals (browser, db) via hooks.",
+  "Execute TypeScript with full Node.js access. Plugins provide context (browser, db) via hooks. Use context.list() to discover available context.",
   { code: z.string() },
   async ({ code }) => {
     const result = await run(code, plugins)
@@ -561,13 +685,13 @@ Security plugins can block patterns via `beforeRun` hook, but this is advisory -
 
 ## Comparison with Original Executor
 
-| Feature          | Original Executor | Runner                     |
-| ---------------- | ----------------- | -------------------------- |
-| Runtime          | Bun + Effect.ts   | Node.js (plain)            |
-| Sandbox          | Yes (3 runtimes)  | No                         |
-| IPC              | Yes               | No                         |
-| Permissions      | Yes               | No                         |
-| Plugin context   | No                | Yes (hooks inject globals) |
-| Plugin lifecycle | Complex           | Simple (setup/teardown)    |
-| Lines of code    | ~50,000+          | ~100                       |
-| Package count    | 50+               | 1                          |
+| Feature          | Original Executor | Runner                              |
+| ---------------- | ----------------- | ----------------------------------- |
+| Runtime          | Bun + Effect.ts   | Node.js (plain)                     |
+| Sandbox          | Yes (3 runtimes)  | No                                  |
+| IPC              | Yes               | No                                  |
+| Permissions      | Yes               | No                                  |
+| Plugin context   | No                | Yes (hooks inject context + search) |
+| Plugin lifecycle | Complex           | Simple (setup/teardown)             |
+| Lines of code    | ~50,000+          | ~150                                |
+| Package count    | 50+               | 1                                   |
