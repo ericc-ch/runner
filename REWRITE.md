@@ -48,10 +48,12 @@ export default defineConfig({
       beforeRun() {
         return {
           context: {
-            foo: {
-              value: "bar",
-              description: "Example inline context",
-            },
+            // Simple: just pass the value
+            db: someDatabase,
+            // With description: attach .description property
+            browser: Object.assign(browser, {
+              description: "Playwright browser for web automation",
+            }),
           },
         }
       },
@@ -73,16 +75,17 @@ Presets are predefined plugin sets for common use cases:
 
 ```ts
 // Built-in presets
-preset.recommended // console, security
-preset.browser // playwright
+preset.recommended // discovery + console (default)
+preset.minimal // no built-ins, start fresh
 
 // Custom preset (in a separate file)
 // my-preset.ts
 import { defineConfig } from "runner"
-import consolePlugin from "runner-plugin-console"
+import { consolePlugin } from "runner/builtins"
+import playwright from "runner-plugin-playwright"
 
 export const myPreset = defineConfig({
-  plugins: [consolePlugin()],
+  plugins: [consolePlugin(), playwright()],
 })
 ```
 
@@ -96,11 +99,6 @@ Plugins extend Runner via hooks. Inspired by OpenCode's plugin architecture.
 // Plugin returns Hooks object
 type Plugin = () => Promise<Hooks>
 
-interface ContextItem {
-  value: unknown
-  description?: string
-}
-
 interface Hooks {
   // Global lifecycle
   setup?: () => Promise<void> // Plugin init (once)
@@ -113,11 +111,40 @@ interface Hooks {
 
 interface RunInput {
   source: string
-  context: Record<string, ContextItem>
+  context: Record<string, unknown> // Just values, no wrapper
 }
 
 interface RunOutput {
-  value: unknown
+  result: unknown
+  error: Error | null
+  value?: unknown
+}
+```
+
+**Context Registration:**
+
+Plugins return bare values in `context`. Descriptions are optional - just attach a `.description` property:
+
+```ts
+// Simple - no description
+context: {
+  db: database
+}
+
+// With description - use Object.assign or spread
+context: {
+  browser: Object.assign(browser, { description: "Playwright browser" })
+}
+
+// Or define the value with description upfront
+const myTool = Object.assign(
+  () => {
+    /* ... */
+  },
+  { description: "Does something useful" },
+)
+context: {
+  tool: myTool
 }
 ```
 
@@ -138,8 +165,10 @@ plugins.map(p => p())  →  hooks[]
 │         ↓                               │
 │      execute (core)                     │
 │         ↓                               │
+│  output = { result, error }            │
+│         ↓                               │
 │  hooks.afterRun (each, merge return)   │
-│    state = { ...state, ...returned }   │
+│    output = { ...output, ...returned } │
 ──────────────────────────────────────────
          ↓ (if beforeRun throws, skip to teardown)
     hooks.teardown (each once)
@@ -148,7 +177,8 @@ plugins.map(p => p())  →  hooks[]
 **Rules:**
 
 - Hooks run in plugin array order
-- Each hook returns partial object → shallow merged into state
+- `beforeRun` returns partial → shallow merged into `state`
+- `afterRun` returns partial → shallow merged into `output`
 - `beforeRun` throws → skip execute → go directly to teardown
 - Return nothing/empty object to skip transformation
 - Plugins manage their own state
@@ -166,18 +196,20 @@ const consolePlugin = async () => {
       logs = [] // Reset each run
       return {
         context: {
-          console: {
-            value: {
+          console: Object.assign(
+            {
               log: (...args) => logs.push(args.join(" ")),
+              error: (...args) => logs.push("[ERROR] " + args.join(" ")),
+              warn: (...args) => logs.push("[WARN] " + args.join(" ")),
             },
-            description: "Captured console for logging",
-          },
+            { description: "Captured console for logging" },
+          ),
         },
       }
     },
-    afterRun(input) {
+    afterRun({ result, error }) {
       return {
-        value: { result: input.result, logs, error: input.error },
+        value: { result, logs, error },
       }
     },
   }
@@ -200,18 +232,15 @@ const playwrightPlugin = async () => {
       const page = await browser.newPage()
       return {
         context: {
-          browser: {
-            value: browser,
+          browser: Object.assign(browser, {
             description: "Playwright browser instance for web automation",
-          },
-          page: {
-            value: page,
+          }),
+          page: Object.assign(page, {
             description: "Active browser page, use for navigation/clicks",
-          },
-          playwright: {
-            value: require("playwright"),
+          }),
+          playwright: Object.assign(require("playwright"), {
             description: "Playwright module with browser launchers",
-          },
+          }),
         },
       }
     },
@@ -253,8 +282,8 @@ const githubPlugin = async () => {
     beforeRun() {
       return {
         context: {
-          github: {
-            value: {
+          github: Object.assign(
+            {
               issues: {
                 list: async (opts: { owner: string; repo: string }) => {
                   const res = await fetch(
@@ -264,8 +293,8 @@ const githubPlugin = async () => {
                 },
               },
             },
-            description: "GitHub API client for issues, repos, PRs",
-          },
+            { description: "GitHub API client for issues, repos, PRs" },
+          ),
         },
       }
     },
@@ -288,10 +317,9 @@ const databasePlugin = async () => {
     beforeRun() {
       return {
         context: {
-          db: {
-            value: db,
+          db: Object.assign(db, {
             description: "SQLite database connection (better-sqlite3)",
-          },
+          }),
         },
       }
     },
@@ -302,53 +330,79 @@ const databasePlugin = async () => {
 }
 ```
 
-## Context Discovery
+## Context Discovery (Built-in Plugin)
 
-Plugins inject context items with metadata. Agents can discover available context at runtime.
+Discovery is provided by a built-in plugin included in `preset.recommended`. Plugins register context as bare values - if a value has a `.description` property, it's indexed for search.
 
-### Context Items
+### How It Works
 
 ```ts
-interface ContextItem {
-  value: unknown // The actual value (browser, db, etc.)
-  description?: string // Human-readable description for the agent
+// Built-in discovery plugin (included in preset.recommended)
+const discoveryPlugin = () => {
+  let contextRegistry: Record<string, unknown>
+
+  return {
+    beforeRun(input) {
+      contextRegistry = input.context
+
+      return {
+        context: {
+          list: Object.assign(
+            () =>
+              Object.entries(contextRegistry).map(([name, value]) => ({
+                name,
+                description: (value as any)?.description ?? null,
+              })),
+            { description: "List all available context items" },
+          ),
+          search: Object.assign(
+            (query: string) => {
+              const q = query.toLowerCase()
+              return Object.entries(contextRegistry)
+                .filter(([name, value]) => {
+                  const nameMatch = name.toLowerCase().includes(q)
+                  const descMatch = (value as any)?.description
+                    ?.toLowerCase()
+                    .includes(q)
+                  return nameMatch || descMatch
+                })
+                .map(([name, value]) => ({
+                  name,
+                  description: (value as any)?.description ?? null,
+                }))
+            },
+            { description: "Search context by name or description" },
+          ),
+        },
+      }
+    },
+  }
 }
 ```
 
-### Built-in Discovery Methods
-
-The runner injects `list()` and `search()` into the context:
+### Agent Usage
 
 ```ts
 // List all available context
-context.list()
+const available = list()
 // => [{ name: "browser", description: "Playwright browser instance" }, ...]
 
 // Search context by name or description
-context.search("web")
-// => [{ name: "browser", description: "Playwright browser instance for web automation" }]
-```
+const webTools = search("web")
+// => [{ name: "browser", description: "Playwright browser for web automation" }]
 
-### Agent Usage Example
-
-```ts
-// Agent discovers what's available
-const available = context.list()
-
-// Agent searches for specific functionality
-const webTools = context.search("browser")
-
-// Agent uses the context directly
-await context.browser.navigate("https://example.com")
-await context.page.click("button")
+// Use context directly
+await browser.newPage()
+await page.click("button")
 ```
 
 ### Why This Matters
 
-1. **Self-documenting**: Context carries its own description
+1. **Self-documenting**: Values carry their own description
 2. **Discoverable**: Agent doesn't need all context in system prompt
 3. **Searchable**: Agent can find tools without knowing exact names
-4. **Extensible**: Third-party plugins can add semantic search, etc.
+4. **Extensible**: Third-party plugins can replace with semantic search
+5. **Optional**: Can be removed if discovery isn't needed
 
 ## Core Implementation
 
@@ -356,11 +410,6 @@ await context.page.click("button")
 
 ```ts
 export type Plugin = () => Promise<Hooks>
-
-export interface ContextItem {
-  value: unknown
-  description?: string
-}
 
 export interface Hooks {
   setup?: () => Promise<void>
@@ -371,11 +420,13 @@ export interface Hooks {
 
 export interface RunInput {
   source: string
-  context: Record<string, ContextItem>
+  context: Record<string, unknown> // Bare values, no wrapper
 }
 
 export interface RunOutput {
-  value: unknown
+  result: unknown
+  error: Error | null
+  value?: unknown
 }
 
 export interface Config {
@@ -434,20 +485,12 @@ export function defineConfig(config: Config): Config {
 export const preset = {
   recommended: defineConfig({
     plugins: [
-      async () => ({
-        /* console plugin */
-      }),
-      async () => ({
-        /* security plugin */
-      }),
+      discoveryPlugin(), // Provides list() and search()
+      consolePlugin(), // Captures console output
     ],
   }),
-  browser: defineConfig({
-    plugins: [
-      async () => ({
-        /* playwright plugin */
-      }),
-    ],
+  minimal: defineConfig({
+    plugins: [], // No built-ins, start fresh
   }),
 }
 ```
@@ -471,61 +514,29 @@ export async function run(source: string, plugins: Plugin[]): Promise<unknown> {
       if (result) state = { ...state, ...result }
     }
 
-    // Build context with built-in discovery methods
-    const contextForExecution = buildContext(state.context)
-
     // Execute
     let result: unknown
     let error: Error | null = null
     try {
-      result = await execute(state.source, contextForExecution)
+      result = await execute(state.source, state.context)
     } catch (e) {
       error = e instanceof Error ? e : new Error(String(e))
     }
 
     // afterRun phase - functional transform
-    let output: RunOutput = { value: { result, error } }
+    let output: RunOutput = { result, error }
     for (const hook of hooks) {
-      const result = await hook.afterRun?.({ result, error })
-      if (result) output = { ...output, ...result }
+      const returned = await hook.afterRun?.(output)
+      if (returned) output = { ...output, ...returned }
     }
 
-    return output.value
+    return output.value ?? { result: output.result, error: output.error }
   } finally {
     // Teardown phase
     for (const hook of hooks) {
       await hook.teardown?.()
     }
   }
-}
-
-function buildContext(context: Record<string, ContextItem>) {
-  const ctx: Record<string, unknown> = {}
-
-  // Unwrap context items to their values
-  for (const [key, item] of Object.entries(context)) {
-    ctx[key] = item.value
-  }
-
-  // Add built-in discovery methods
-  ctx.list = () =>
-    Object.entries(context).map(([name, item]) => ({
-      name,
-      description: item.description,
-    }))
-
-  ctx.search = (query: string) => {
-    const q = query.toLowerCase()
-    return Object.entries(context)
-      .filter(([name, item]) => {
-        const nameMatch = name.toLowerCase().includes(q)
-        const descMatch = item.description?.toLowerCase().includes(q)
-        return nameMatch || descMatch
-      })
-      .map(([name, item]) => ({ name, description: item.description }))
-  }
-
-  return ctx
 }
 
 async function execute(
@@ -541,6 +552,84 @@ async function execute(
 }
 ```
 
+### builtins/discovery.ts
+
+```ts
+// Built-in discovery plugin - provides list() and search()
+export const discoveryPlugin = (): Plugin => async () => {
+  let contextRegistry: Record<string, unknown>
+
+  return {
+    beforeRun(input) {
+      contextRegistry = input.context
+
+      return {
+        context: {
+          list: Object.assign(
+            () =>
+              Object.entries(contextRegistry).map(([name, value]) => ({
+                name,
+                description: (value as any)?.description ?? null,
+              })),
+            { description: "List all available context items" },
+          ),
+          search: Object.assign(
+            (query: string) => {
+              const q = query.toLowerCase()
+              return Object.entries(contextRegistry)
+                .filter(([name, value]) => {
+                  const nameMatch = name.toLowerCase().includes(q)
+                  const descMatch = (value as any)?.description
+                    ?.toLowerCase()
+                    .includes(q)
+                  return nameMatch || descMatch
+                })
+                .map(([name, value]) => ({
+                  name,
+                  description: (value as any)?.description ?? null,
+                }))
+            },
+            { description: "Search context by name or description" },
+          ),
+        },
+      }
+    },
+  }
+}
+```
+
+### builtins/console.ts
+
+```ts
+// Built-in console capture plugin
+export const consolePlugin = (): Plugin => async () => {
+  let logs: string[]
+
+  return {
+    beforeRun() {
+      logs = []
+      return {
+        context: {
+          console: Object.assign(
+            {
+              log: (...args: any[]) => logs.push(args.join(" ")),
+              error: (...args: any[]) => logs.push("[ERROR] " + args.join(" ")),
+              warn: (...args: any[]) => logs.push("[WARN] " + args.join(" ")),
+            },
+            { description: "Captured console for logging" },
+          ),
+        },
+      }
+    },
+    afterRun({ result, error }) {
+      return {
+        value: { result, logs, error },
+      }
+    },
+  }
+}
+```
+
 ## Project Structure
 
 ```
@@ -552,7 +641,11 @@ runner/
 │   ├── types.ts           # Plugin, Hooks, Config types
 │   ├── config.ts          # Config loading (global + local)
 │   ├── cli.ts             # CLI entry
-│   └── mcp.ts             # MCP server
+│   ├── mcp.ts             # MCP server
+│   └── builtins/          # Built-in plugins
+│       ├── index.ts       # Exports all builtins
+│       ├── discovery.ts   # list() and search()
+│       └── console.ts     # Console capture
 └── REWRITE.md
 
 # User's project
@@ -607,10 +700,12 @@ export default function examplePlugin(): Plugin {
     beforeRun() {
       return {
         context: {
-          example: {
-            value: true,
-            description: "Example context item",
-          },
+          // Simple - no description
+          db: someDatabase,
+          // With description
+          api: Object.assign(apiClient, {
+            description: "API client for external service"
+          }),
         },
       }
     }
@@ -643,13 +738,17 @@ const server = new McpServer({ name: "runner", version: "0.1.0" })
 
 server.tool(
   "execute",
-  "Execute TypeScript with full Node.js access. Plugins provide context (browser, db) via hooks. Use context.list() to discover available context.",
+  "Execute TypeScript with full Node.js access. Plugins provide context (browser, db) via hooks. Use list() to see available context, search(query) to find specific tools.",
   { code: z.string() },
   async ({ code }) => {
     const result = await run(code, plugins)
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      isError: result.error != null,
+      isError:
+        result
+        && typeof result === "object"
+        && "error" in result
+        && result.error != null,
     }
   },
 )
@@ -682,16 +781,3 @@ console.log(JSON.stringify(result, null, 2))
 This is for trusted agents only. Not for running untrusted code.
 
 Security plugins can block patterns via `beforeRun` hook, but this is advisory - agent can bypass if clever.
-
-## Comparison with Original Executor
-
-| Feature          | Original Executor | Runner                              |
-| ---------------- | ----------------- | ----------------------------------- |
-| Runtime          | Bun + Effect.ts   | Node.js (plain)                     |
-| Sandbox          | Yes (3 runtimes)  | No                                  |
-| IPC              | Yes               | No                                  |
-| Permissions      | Yes               | No                                  |
-| Plugin context   | No                | Yes (hooks inject context + search) |
-| Plugin lifecycle | Complex           | Simple (setup/teardown)             |
-| Lines of code    | ~50,000+          | ~150                                |
-| Package count    | 50+               | 1                                   |
