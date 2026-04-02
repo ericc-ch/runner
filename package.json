@@ -1,5 +1,5 @@
 {
-  "name": "pkg-placeholder",
+  "name": "@ericc-ch/runner",
   "version": "0.0.1",
   "description": "_description_",
   "keywords": [
@@ -23,7 +23,7 @@
     }
   },
   "bin": {
-    "pkg-placeholder": "./dist/cli.mjs"
+    "runner": "./dist/cli.mjs"
   },
   "files": [
     "dist",
@@ -46,6 +46,7 @@
   },
   "dependencies": {
     "@effect/platform-node": "^4.0.0-beta.43",
+    "defu": "^6.1.6",
     "effect": "^4.0.0-beta.43",
     "env-paths": "^4.0.0",
     "jiti": "^2.5.0"

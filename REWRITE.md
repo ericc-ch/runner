@@ -2,6 +2,8 @@
 
 Simple TypeScript execution for AI agents. No sandbox, no permissions. Let the agent run wild.
 
+Built with [Effect v4](https://github.com/Effect-TS/effect-smol/blob/main/LLMS.md).
+
 ## Architecture
 
 ```
@@ -26,20 +28,18 @@ Runner uses config files for plugin composition (Vite-style). Configs cascade: g
 
 ```
 ~/.config/runner/config.ts    # Global config (applies everywhere)
-./.runner/config.ts            # Local config (extends global)
+./.runner/config.ts            # Local config
 ```
 
 ### Config API
 
 ```ts
 // .runner/config.ts
-import { defineConfig, preset } from "runner"
+import { defineConfig } from "@ericc-ch/runner"
 import playwright from "runner-plugin-playwright" // npm package
 import { consolePlugin } from "./plugins/console" // local file
 
 export default defineConfig({
-  extends: preset.recommended, // optional: start from preset
-
   plugins: [
     playwright(), // npm plugin
     consolePlugin(), // local plugin
@@ -66,28 +66,8 @@ export default defineConfig({
 
 1. Load global config (`~/.config/runner/config.ts`) if exists
 2. Load local config (`./.runner/config.ts`) if exists
-3. Merge: `{ ...global, ...local }` with plugins concatenated
+3. Merge with `defu`: local overlays global
 4. Plugins run in array order (first to last)
-
-### Presets
-
-Presets are predefined plugin sets for common use cases:
-
-```ts
-// Built-in presets
-preset.recommended // discovery + console (default)
-preset.minimal // no built-ins, start fresh
-
-// Custom preset (in a separate file)
-// my-preset.ts
-import { defineConfig } from "runner"
-import { consolePlugin } from "runner/builtins"
-import playwright from "runner-plugin-playwright"
-
-export const myPreset = defineConfig({
-  plugins: [consolePlugin(), playwright()],
-})
-```
 
 ## Plugin System
 
@@ -101,12 +81,12 @@ type Plugin = () => Promise<Hooks>
 
 interface Hooks {
   // Global lifecycle
-  setup?: () => Promise<void> // Plugin init (once)
-  teardown?: () => Promise<void> // Plugin cleanup (once)
+  setup: () => Promise<void> // Plugin init (once)
+  teardown: () => Promise<void> // Plugin cleanup (once)
 
   // Per-run lifecycle - return partial to merge
-  beforeRun?: (input: RunInput) => Promise<Partial<RunInput> | void>
-  afterRun?: (input: RunOutput) => Promise<Partial<RunOutput> | void>
+  beforeRun: (input: RunInput) => Promise<Partial<RunInput> | void>
+  afterRun: (input: RunOutput) => Promise<Partial<RunOutput> | void>
 }
 
 interface RunInput {
@@ -117,7 +97,6 @@ interface RunInput {
 interface RunOutput {
   result: unknown
   error: Error | null
-  value?: unknown
 }
 ```
 
@@ -155,7 +134,7 @@ Each hook returns a partial object that gets shallow-merged into state. Return n
 ```
 plugins.map(p => p())  →  hooks[]
          ↓
-    hooks.setup (each once)
+    hooks.setup (each once, acquire/release pattern)
          ↓
 ──────────────────────────────────────────
 │  state = { source, context: {} }        │
@@ -171,7 +150,7 @@ plugins.map(p => p())  →  hooks[]
 │    output = { ...output, ...returned } │
 ──────────────────────────────────────────
          ↓ (if beforeRun throws, skip to teardown)
-    hooks.teardown (each once)
+    hooks.teardown (each once, guaranteed by acquire/release)
 ```
 
 **Rules:**
@@ -182,6 +161,7 @@ plugins.map(p => p())  →  hooks[]
 - `beforeRun` throws → skip execute → go directly to teardown
 - Return nothing/empty object to skip transformation
 - Plugins manage their own state
+- Teardown is guaranteed via Effect's acquire/release pattern
 
 ### Plugin Examples
 
@@ -192,6 +172,12 @@ const consolePlugin = async () => {
   let logs: string[]
 
   return {
+    setup() {
+      // Initialize if needed
+    },
+    teardown() {
+      // Cleanup if needed
+    },
     beforeRun() {
       logs = [] // Reset each run
       return {
@@ -209,7 +195,7 @@ const consolePlugin = async () => {
     },
     afterRun({ result, error }) {
       return {
-        value: { result, logs, error },
+        result: { result, logs, error },
       }
     },
   }
@@ -256,6 +242,8 @@ const playwrightPlugin = async () => {
 ```ts
 const securityPlugin = async () => {
   return {
+    setup() {},
+    teardown() {},
     beforeRun(input) {
       // Block dangerous patterns
       if (input.source.includes("eval(")) {
@@ -270,6 +258,7 @@ const securityPlugin = async () => {
         source: input.source.replace(/import.*fs/g, "// fs blocked"),
       }
     },
+    afterRun() {},
   }
 }
 ```
@@ -279,6 +268,8 @@ const securityPlugin = async () => {
 ```ts
 const githubPlugin = async () => {
   return {
+    setup() {},
+    teardown() {},
     beforeRun() {
       return {
         context: {
@@ -298,6 +289,7 @@ const githubPlugin = async () => {
         },
       }
     },
+    afterRun() {},
   }
 }
 ```
@@ -332,16 +324,18 @@ const databasePlugin = async () => {
 
 ## Context Discovery (Built-in Plugin)
 
-Discovery is provided by a built-in plugin included in `preset.recommended`. Plugins register context as bare values - if a value has a `.description` property, it's indexed for search.
+Discovery is provided by a built-in plugin. Plugins register context as bare values - if a value has a `.description` property, it's indexed for search.
 
 ### How It Works
 
 ```ts
-// Built-in discovery plugin (included in preset.recommended)
+// Built-in discovery plugin
 const discoveryPlugin = () => {
   let contextRegistry: Record<string, unknown>
 
   return {
+    setup() {},
+    teardown() {},
     beforeRun(input) {
       contextRegistry = input.context
 
@@ -376,6 +370,7 @@ const discoveryPlugin = () => {
         },
       }
     },
+    afterRun() {},
   }
 }
 ```
@@ -409,146 +404,178 @@ await page.click("button")
 ### types.ts
 
 ```ts
-export type Plugin = () => Promise<Hooks>
-
-export interface Hooks {
-  setup?: () => Promise<void>
-  teardown?: () => Promise<void>
-  beforeRun?: (input: RunInput) => Promise<Partial<RunInput> | void>
-  afterRun?: (input: RunOutput) => Promise<Partial<RunOutput> | void>
-}
-
 export interface RunInput {
   source: string
-  context: Record<string, unknown> // Bare values, no wrapper
+  context: Record<string, unknown>
 }
 
 export interface RunOutput {
   result: unknown
   error: Error | null
-  value?: unknown
 }
 
-export interface Config {
-  extends?: Config
-  plugins?: Plugin[]
-}
-```
-
-### config.ts
-
-```ts
-import { existsSync } from "fs"
-import { homedir } from "os"
-import { join } from "path"
-import type { Config, Plugin } from "./types.js"
-
-const globalConfigPath = join(homedir(), ".config/runner/config.ts")
-const localConfigPath = join(process.cwd(), ".runner/config.ts")
-
-export async function loadConfig(): Promise<{ plugins: Plugin[] }> {
-  let config: Config = { plugins: [] }
-
-  // Load global config
-  if (existsSync(globalConfigPath)) {
-    const global = await import(globalConfigPath)
-    config = merge(config, global.default)
-  }
-
-  // Load local config
-  if (existsSync(localConfigPath)) {
-    const local = await import(localConfigPath)
-    config = merge(config, local.default)
-  }
-
-  // Resolve extends
-  if (config.extends) {
-    config = merge(config.extends, config)
-  }
-
-  return config
+export interface Hooks {
+  setup: () => Promise<void>
+  teardown: () => Promise<void>
+  beforeRun: (input: RunInput) => Promise<Partial<RunInput> | void>
+  afterRun: (input: RunOutput) => Promise<Partial<RunOutput> | void>
 }
 
-function merge(base: Config, override: Config): Config {
-  return {
-    ...base,
-    ...override,
-    plugins: [...(base.plugins ?? []), ...(override.plugins ?? [])],
-  }
-}
-
-export function defineConfig(config: Config): Config {
-  return config
-}
-
-// Built-in presets (importable)
-export const preset = {
-  recommended: defineConfig({
-    plugins: [
-      discoveryPlugin(), // Provides list() and search()
-      consolePlugin(), // Captures console output
-    ],
-  }),
-  minimal: defineConfig({
-    plugins: [], // No built-ins, start fresh
-  }),
-}
+export type Plugin = () => Promise<Hooks>
 ```
 
 ### runner.ts
 
 ```ts
-export async function run(source: string, plugins: Plugin[]): Promise<unknown> {
-  const hooks = await Promise.all(plugins.map((p) => p()))
+import { Effect, Schema } from "effect"
+import type { Plugin, RunInput, RunOutput } from "./types.js"
 
-  // Setup phase
-  for (const hook of hooks) {
-    await hook.setup?.()
-  }
+export class HookError extends Schema.TaggedErrorClass<HookError>()(
+  "HookError",
+  {
+    hook: Schema.String,
+    cause: Schema.Defect,
+  },
+) {}
 
-  try {
+export const run = Effect.fn("run")((source: string, plugins: Plugin[]) =>
+  Effect.gen(function* () {
+    // Acquire all hooks with guaranteed teardown via acquireRelease
+    const hooks = yield* Effect.forEach(plugins, (plugin) =>
+      Effect.acquireRelease(Effect.promise(plugin), (hook) =>
+        Effect.promise(() => hook.teardown()),
+      ),
+    )
+
+    // Setup phase
+    yield* Effect.forEach(
+      hooks,
+      (hook) =>
+        Effect.tryPromise({
+          try: () => hook.setup(),
+          catch: (cause) => new HookError({ hook: "setup", cause }),
+        }),
+      { discard: true },
+    )
+
     // beforeRun phase - functional transform
-    let state: RunInput = { source, context: {} }
+    const currentState: RunInput = { source, context: {} }
     for (const hook of hooks) {
-      const result = await hook.beforeRun?.(state)
-      if (result) state = { ...state, ...result }
+      const result = yield* Effect.tryPromise({
+        try: () => hook.beforeRun(currentState),
+        catch: (cause) => new HookError({ hook: "beforeRun", cause }),
+      })
+      if (result) {
+        Object.assign(currentState, result)
+      }
     }
 
     // Execute
-    let result: unknown
-    let error: Error | null = null
-    try {
-      result = await execute(state.source, state.context)
-    } catch (e) {
-      error = e instanceof Error ? e : new Error(String(e))
-    }
+    const currentOutput: RunOutput = yield* Effect.try({
+      try: () => {
+        const params = Object.keys(currentState.context)
+        const fn = new Function(
+          ...params,
+          `"use strict"; return (async () => {\n${currentState.source}\n})();`,
+        )
+        return fn(...Object.values(currentState.context))
+      },
+      catch: (error: unknown): unknown => error,
+    }).pipe(
+      Effect.match({
+        onFailure: (error) => ({
+          result: undefined,
+          error: error instanceof Error ? error : new Error(String(error)),
+        }),
+        onSuccess: (result) => ({ result, error: null }),
+      }),
+    )
 
     // afterRun phase - functional transform
-    let output: RunOutput = { result, error }
     for (const hook of hooks) {
-      const returned = await hook.afterRun?.(output)
-      if (returned) output = { ...output, ...returned }
+      const result = yield* Effect.tryPromise({
+        try: () => hook.afterRun(currentOutput),
+        catch: (cause) => new HookError({ hook: "afterRun", cause }),
+      })
+      if (result) {
+        Object.assign(currentOutput, result)
+      }
     }
 
-    return output.value ?? { result: output.result, error: output.error }
-  } finally {
-    // Teardown phase
-    for (const hook of hooks) {
-      await hook.teardown?.()
-    }
-  }
+    return { result: currentOutput.result, error: currentOutput.error }
+  }),
+)
+```
+
+### config.ts
+
+```ts
+import { defu } from "defu"
+import { Effect, FileSystem, Layer, Path, Schema, ServiceMap } from "effect"
+import envPaths from "env-paths"
+import { createJiti } from "jiti"
+
+const paths = envPaths("runner")
+
+export class JitiError extends Schema.TaggedErrorClass<JitiError>()(
+  "JitiError",
+  {
+    cause: Schema.Defect,
+  },
+) {}
+
+export class ConfigSchema extends Schema.Class<ConfigSchema>("ConfigSchema")({
+  plugins: Schema.optional(Schema.Array(Schema.Any)),
+}) {
+  static readonly empty: ConfigSchema = { plugins: [] }
 }
 
-async function execute(
-  source: string,
-  context: Record<string, unknown>,
-): Promise<unknown> {
-  const params = Object.keys(context)
-  const fn = new Function(
-    ...params,
-    `"use strict"; return (async () => {\n${source}\n})();`,
-  )
-  return fn(...Object.values(context))
+export function defineConfig(config: ConfigSchema): ConfigSchema {
+  return config
+}
+
+export class Config extends ServiceMap.Service<Config>()(
+  "@ericc-ch/runner/Config",
+  {
+    make: Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const jiti = createJiti(import.meta.url)
+
+      yield* fs.makeDirectory(paths.config, { recursive: true })
+
+      const loadFile = Effect.fn(function* (filePath: string) {
+        return yield* Effect.tryPromise({
+          try: () => jiti.import(filePath) as Promise<ConfigSchema>,
+          catch: (cause) => new JitiError({ cause }),
+        })
+      })
+
+      const load = Effect.fn(function* () {
+        const cwd = yield* Effect.sync(() => process.cwd())
+
+        const globalPath = path.join(paths.config, "config.ts")
+        const localPath = path.join(cwd, ".runner/config.ts")
+
+        const global = yield* loadFile(globalPath).pipe(
+          Effect.catchTag("JitiError", () =>
+            Effect.succeed(ConfigSchema.empty),
+          ),
+        )
+        const local = yield* loadFile(localPath).pipe(
+          Effect.catchTag("JitiError", () =>
+            Effect.succeed(ConfigSchema.empty),
+          ),
+        )
+
+        return defu(local, global)
+      })
+
+      return { load }
+    }),
+  },
+) {
+  static readonly layer = Layer.effect(Config, Config.make)
 }
 ```
 
@@ -556,11 +583,15 @@ async function execute(
 
 ```ts
 // Built-in discovery plugin - provides list() and search()
+import type { Plugin, RunInput, RunOutput } from "../types.js"
+
 export const discoveryPlugin = (): Plugin => async () => {
   let contextRegistry: Record<string, unknown>
 
   return {
-    beforeRun(input) {
+    setup: async () => {},
+    teardown: async () => {},
+    beforeRun: async (input: RunInput) => {
       contextRegistry = input.context
 
       return {
@@ -594,6 +625,7 @@ export const discoveryPlugin = (): Plugin => async () => {
         },
       }
     },
+    afterRun: async (_output: RunOutput) => {},
   }
 }
 ```
@@ -602,11 +634,15 @@ export const discoveryPlugin = (): Plugin => async () => {
 
 ```ts
 // Built-in console capture plugin
+import type { Plugin, RunInput, RunOutput } from "../types.js"
+
 export const consolePlugin = (): Plugin => async () => {
   let logs: string[]
 
   return {
-    beforeRun() {
+    setup: async () => {},
+    teardown: async () => {},
+    beforeRun: async () => {
       logs = []
       return {
         context: {
@@ -621,9 +657,9 @@ export const consolePlugin = (): Plugin => async () => {
         },
       }
     },
-    afterRun({ result, error }) {
+    afterRun: async ({ result, error }: RunOutput) => {
       return {
-        value: { result, logs, error },
+        result: { result, logs, error },
       }
     },
   }
@@ -636,12 +672,12 @@ export const consolePlugin = (): Plugin => async () => {
 runner/
 ├── package.json           # Dependencies
 ├── src/
-│   ├── index.ts           # Main exports (defineConfig, preset, run, types)
-│   ├── runner.ts          # Execution engine + hooks orchestration
+│   ├── main.ts            # Main exports (defineConfig, builtins, run, types)
+│   ├── runner.ts          # Execution engine + hooks orchestration (Effect)
 │   ├── types.ts           # Plugin, Hooks, Config types
-│   ├── config.ts          # Config loading (global + local)
-│   ├── cli.ts             # CLI entry
-│   ├── mcp.ts             # MCP server
+│   ├── config.ts          # Config loading (Effect service, jiti, defu)
+│   ├── cli.ts             # CLI entry (Effect CLI)
+│   ├── mcp.ts             # MCP server (TODO)
 │   └── builtins/          # Built-in plugins
 │       ├── index.ts       # Exports all builtins
 │       ├── discovery.ts   # list() and search()
@@ -663,8 +699,11 @@ project/
 ```json
 {
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "zod": "^3.0.0"
+    "@effect/platform-node": "^4.0.0-beta.43",
+    "defu": "^6.1.6",
+    "effect": "^4.0.0-beta.43",
+    "env-paths": "^4.0.0",
+    "jiti": "^2.5.0"
   }
 }
 ```
@@ -693,11 +732,13 @@ export default defineConfig({
 
 ```ts
 // runner-plugin-example/index.ts
-import type { Plugin } from 'runner'
+import type { Plugin } from '@ericc-ch/runner'
 
 export default function examplePlugin(): Plugin {
   return async () => ({
-    beforeRun() {
+    setup: async () => {},
+    teardown: async () => {},
+    beforeRun: async () => {
       return {
         context: {
           // Simple - no description
@@ -708,7 +749,8 @@ export default function examplePlugin(): Plugin {
           }),
         },
       }
-    }
+    },
+    afterRun: async () => {},
   })
 }
 
@@ -717,12 +759,12 @@ export default function examplePlugin(): Plugin {
   "name": "runner-plugin-example",
   "main": "index.ts",
   "peerDependencies": {
-    "runner": "^0.1.0"
+    "@ericc-ch/runner": "^0.1.0"
   }
 }
 ```
 
-## MCP Server
+## MCP Server (TODO)
 
 ```ts
 // mcp.ts
@@ -756,7 +798,9 @@ server.tool(
 await server.connect(new StdioServerTransport())
 ```
 
-## CLI
+## CLI (TODO)
+
+Current CLI is a placeholder. Needs implementation:
 
 ```ts
 // cli.ts
@@ -781,3 +825,23 @@ console.log(JSON.stringify(result, null, 2))
 This is for trusted agents only. Not for running untrusted code.
 
 Security plugins can block patterns via `beforeRun` hook, but this is advisory - agent can bypass if clever.
+
+**Future:** Use Deno child process with permission flags for actual security boundaries. Would require IPC proxy layer for live objects (browser, db).
+
+## Implementation Status
+
+### Done
+
+- [x] Core types (`types.ts`)
+- [x] Runner engine with Effect v4 (`runner.ts`)
+- [x] Config loader with jiti + defu (`config.ts`)
+- [x] Hook lifecycle with acquire/release pattern
+
+### TODO
+
+- [ ] `src/main.ts` - Main exports
+- [ ] `src/mcp.ts` - MCP server implementation
+- [ ] CLI implementation (currently placeholder)
+- [ ] `src/builtins/` - Built-in plugins (discovery, console)
+- [ ] Update package name from `pkg-placeholder`
+- [ ] Tests
