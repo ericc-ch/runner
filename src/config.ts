@@ -2,8 +2,13 @@ import { defu } from "defu"
 import { Effect, FileSystem, Layer, Path, Schema, ServiceMap } from "effect"
 import envPaths from "env-paths"
 import { createJiti } from "jiti"
+import { consolePlugin } from "./builtins/console"
 
 const paths = envPaths("runner")
+
+const builtins = {
+  plugins: [consolePlugin()],
+}
 
 export class JitiError extends Schema.TaggedErrorClass<JitiError>()(
   "JitiError",
@@ -56,7 +61,14 @@ export class Config extends ServiceMap.Service<Config>()(
           ),
         )
 
-        return defu(local, global)
+        const merged = defu(local, global)
+        return {
+          plugins: [
+            ...builtins.plugins,
+            ...(global.plugins ?? []),
+            ...(local.plugins ?? []),
+          ],
+        }
       })
 
       return { load }

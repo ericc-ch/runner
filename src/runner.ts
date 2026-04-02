@@ -68,6 +68,6 @@ export const run = Effect.fn("run")((source: string, plugins: Plugin[]) =>
       }
     }
 
-    return { result: currentOutput.result, error: currentOutput.error }
+    return currentOutput
   }),
 )
