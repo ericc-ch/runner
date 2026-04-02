@@ -22,27 +22,12 @@ const dryRun = Flag.boolean("dry-run").pipe(
 
 const release = Command.make("release", { dryRun }, ({ dryRun }) =>
   Effect.gen(function* () {
-    const currentTag = yield* runCommand("git", [
-      "describe",
-      "--tags",
-      "--exact-match",
-      "HEAD",
-    ])
+    const currentTag = yield* runCommand("git", ["describe", "--tags", "--exact-match", "HEAD"])
 
-    const prevTag = yield* runCommand("git", [
-      "describe",
-      "--tags",
-      "--abbrev=0",
-      `${currentTag}^`,
-    ])
+    const prevTag = yield* runCommand("git", ["describe", "--tags", "--abbrev=0", `${currentTag}^`])
 
     const range = prevTag ? `${prevTag}..${currentTag}` : currentTag
-    const notes = yield* runCommand("git", [
-      "log",
-      range,
-      "--pretty=format:%s",
-      "--no-merges",
-    ])
+    const notes = yield* runCommand("git", ["log", range, "--pretty=format:%s", "--no-merges"])
 
     yield* Effect.log(`Current tag: ${currentTag}`)
     yield* Effect.log(`Previous tag: ${prevTag}`)

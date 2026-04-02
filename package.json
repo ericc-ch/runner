@@ -7,20 +7,13 @@
   ],
   "homepage": "https://github.com/ericc-ch/pkg-placeholder",
   "bugs": "https://github.com/ericc-ch/pkg-placeholder/issues",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/ericc-ch/pkg-placeholder.git"
-  },
   "author": {
     "name": "Erick Christian",
     "email": "erickchristian48@gmail.com"
   },
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/main.d.ts",
-      "default": "./dist/main.mjs"
-    }
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ericc-ch/pkg-placeholder.git"
   },
   "bin": {
     "runner": "./dist/cli.mjs"
@@ -29,9 +22,19 @@
     "dist",
     "src"
   ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/main.d.ts",
+      "default": "./dist/main.mjs"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsdown",
-    "format": "prettier --write .",
+    "format": "oxfmt",
     "lint": "oxlint --type-aware",
     "prepare": "simple-git-hooks && effect-language-service patch",
     "prepack": "pnpm run build",
@@ -40,21 +43,18 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
-  "simple-git-hooks": {
-    "pre-commit": "pnpm run format",
-    "pre-push": "pnpm run typecheck && pnpm test && pnpm run lint"
-  },
   "dependencies": {
     "@effect/platform-node": "^4.0.0-beta.43",
     "defu": "^6.1.6",
     "effect": "^4.0.0-beta.43",
     "env-paths": "^4.0.0",
-    "jiti": "^2.5.0"
+    "jiti": "^2.6.1"
   },
   "devDependencies": {
-    "@effect/language-service": "^0.84.2",
+    "@effect/language-service": "^0.84.3",
     "@types/node": "^25.5.0",
     "bumpp": "^11.0.1",
+    "oxfmt": "^0.43.0",
     "oxlint": "^1.58.0",
     "oxlint-tsgolint": "^0.19.0",
     "prettier": "^3.8.1",
@@ -64,7 +64,8 @@
     "typescript": "^6.0.2",
     "vitest": "^4.1.2"
   },
-  "publishConfig": {
-    "access": "public"
+  "simple-git-hooks": {
+    "pre-commit": "pnpm run format",
+    "pre-push": "pnpm run typecheck && pnpm test && pnpm run lint"
   }
 }

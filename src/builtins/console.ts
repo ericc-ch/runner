@@ -13,10 +13,8 @@ export const consolePlugin = (): Plugin => async () => {
           console: Object.assign(
             {
               log: (...args: unknown[]) => logs.push(args.join(" ")),
-              error: (...args: unknown[]) =>
-                logs.push("[ERROR] " + args.join(" ")),
-              warn: (...args: unknown[]) =>
-                logs.push("[WARN] " + args.join(" ")),
+              error: (...args: unknown[]) => logs.push("[ERROR] " + args.join(" ")),
+              warn: (...args: unknown[]) => logs.push("[WARN] " + args.join(" ")),
             },
             { description: "Captured console for logging" },
           ),

@@ -1,15 +1,12 @@
 import { Effect, Schema } from "effect"
-import type { Plugin, RunInput, RunOutput } from "./types.js"
+import type { RequiredPlugin, RunInput, RunOutput } from "./types"
 
-export class HookError extends Schema.TaggedErrorClass<HookError>()(
-  "HookError",
-  {
-    hook: Schema.String,
-    cause: Schema.Defect,
-  },
-) {}
+export class HookError extends Schema.TaggedErrorClass<HookError>()("HookError", {
+  hook: Schema.String,
+  cause: Schema.Defect,
+}) {}
 
-export const run = Effect.fn("run")((source: string, plugins: Plugin[]) =>
+export const run = Effect.fn((source: string, plugins: RequiredPlugin[]) =>
   Effect.gen(function* () {
     const hooks = yield* Effect.forEach(plugins, (plugin) =>
       Effect.acquireRelease(Effect.promise(plugin), (hook) =>

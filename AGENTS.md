@@ -1,11 +1,12 @@
-Refer to the following for Effect (v4) documentation
-https://github.com/Effect-TS/effect-smol/blob/main/LLMS.md
+# Package Manager
 
-Clone the whole repo, shallow, to /tmp
-Then read it from there
+Uses pnpm.
 
-IMPORTANT: When reading docs, ALWAYS explore deeply:
+# Post-Work Checklist
 
-- Don't just read the overview - open linked files in migration/ and ai-docs/src/
-- Read the actual code examples (\*.ts files) to understand patterns
-- Check migration guides for v3→v4 changes at /migration/\*.md
+Run typecheck and lint after completing any work.
+
+# Effect v4 Documentation
+
+Clone https://github.com/Effect-TS/effect-smol to /tmp (shallow), then read from there.
+Deep dive: open linked files in migration/ and ai-docs/src/, read \*.ts examples, check migration guides.

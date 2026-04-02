@@ -355,9 +355,7 @@ const discoveryPlugin = () => {
               return Object.entries(contextRegistry)
                 .filter(([name, value]) => {
                   const nameMatch = name.toLowerCase().includes(q)
-                  const descMatch = (value as any)?.description
-                    ?.toLowerCase()
-                    .includes(q)
+                  const descMatch = (value as any)?.description?.toLowerCase().includes(q)
                   return nameMatch || descMatch
                 })
                 .map(([name, value]) => ({
@@ -430,13 +428,10 @@ export type Plugin = () => Promise<Hooks>
 import { Effect, Schema } from "effect"
 import type { Plugin, RunInput, RunOutput } from "./types.js"
 
-export class HookError extends Schema.TaggedErrorClass<HookError>()(
-  "HookError",
-  {
-    hook: Schema.String,
-    cause: Schema.Defect,
-  },
-) {}
+export class HookError extends Schema.TaggedErrorClass<HookError>()("HookError", {
+  hook: Schema.String,
+  cause: Schema.Defect,
+}) {}
 
 export const run = Effect.fn("run")((source: string, plugins: Plugin[]) =>
   Effect.gen(function* () {
@@ -517,12 +512,9 @@ import { createJiti } from "jiti"
 
 const paths = envPaths("runner")
 
-export class JitiError extends Schema.TaggedErrorClass<JitiError>()(
-  "JitiError",
-  {
-    cause: Schema.Defect,
-  },
-) {}
+export class JitiError extends Schema.TaggedErrorClass<JitiError>()("JitiError", {
+  cause: Schema.Defect,
+}) {}
 
 export class ConfigSchema extends Schema.Class<ConfigSchema>("ConfigSchema")({
   plugins: Schema.optional(Schema.Array(Schema.Any)),
@@ -534,47 +526,40 @@ export function defineConfig(config: ConfigSchema): ConfigSchema {
   return config
 }
 
-export class Config extends ServiceMap.Service<Config>()(
-  "@ericc-ch/runner/Config",
-  {
-    make: Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem
-      const path = yield* Path.Path
-      const jiti = createJiti(import.meta.url)
+export class Config extends ServiceMap.Service<Config>()("@ericc-ch/runner/Config", {
+  make: Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const jiti = createJiti(import.meta.url)
 
-      yield* fs.makeDirectory(paths.config, { recursive: true })
+    yield* fs.makeDirectory(paths.config, { recursive: true })
 
-      const loadFile = Effect.fn(function* (filePath: string) {
-        return yield* Effect.tryPromise({
-          try: () => jiti.import(filePath) as Promise<ConfigSchema>,
-          catch: (cause) => new JitiError({ cause }),
-        })
+    const loadFile = Effect.fn(function* (filePath: string) {
+      return yield* Effect.tryPromise({
+        try: () => jiti.import(filePath) as Promise<ConfigSchema>,
+        catch: (cause) => new JitiError({ cause }),
       })
+    })
 
-      const load = Effect.fn(function* () {
-        const cwd = yield* Effect.sync(() => process.cwd())
+    const load = Effect.fn(function* () {
+      const cwd = yield* Effect.sync(() => process.cwd())
 
-        const globalPath = path.join(paths.config, "config.ts")
-        const localPath = path.join(cwd, ".runner/config.ts")
+      const globalPath = path.join(paths.config, "config.ts")
+      const localPath = path.join(cwd, ".runner/config.ts")
 
-        const global = yield* loadFile(globalPath).pipe(
-          Effect.catchTag("JitiError", () =>
-            Effect.succeed(ConfigSchema.empty),
-          ),
-        )
-        const local = yield* loadFile(localPath).pipe(
-          Effect.catchTag("JitiError", () =>
-            Effect.succeed(ConfigSchema.empty),
-          ),
-        )
+      const global = yield* loadFile(globalPath).pipe(
+        Effect.catchTag("JitiError", () => Effect.succeed(ConfigSchema.empty)),
+      )
+      const local = yield* loadFile(localPath).pipe(
+        Effect.catchTag("JitiError", () => Effect.succeed(ConfigSchema.empty)),
+      )
 
-        return defu(local, global)
-      })
+      return defu(local, global)
+    })
 
-      return { load }
-    }),
-  },
-) {
+    return { load }
+  }),
+}) {
   static readonly layer = Layer.effect(Config, Config.make)
 }
 ```
@@ -610,9 +595,7 @@ export const discoveryPlugin = (): Plugin => async () => {
               return Object.entries(contextRegistry)
                 .filter(([name, value]) => {
                   const nameMatch = name.toLowerCase().includes(q)
-                  const descMatch = (value as any)?.description
-                    ?.toLowerCase()
-                    .includes(q)
+                  const descMatch = (value as any)?.description?.toLowerCase().includes(q)
                   return nameMatch || descMatch
                 })
                 .map(([name, value]) => ({
@@ -786,11 +769,7 @@ server.tool(
     const result = await run(code, plugins)
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      isError:
-        result
-        && typeof result === "object"
-        && "error" in result
-        && result.error != null,
+      isError: result && typeof result === "object" && "error" in result && result.error != null,
     }
   },
 )

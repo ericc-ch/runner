@@ -1,13 +1,5 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
-import {
-  Console,
-  Effect,
-  FileSystem,
-  Layer,
-  Option,
-  Stream,
-  Stdio,
-} from "effect"
+import { Console, Effect, FileSystem, Layer, Option, Stdio, Stream } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
 import { Config } from "./config"
 import { run } from "./runner"
@@ -38,10 +30,8 @@ const command = Command.make(
       onSome: (code) => Effect.succeed(code),
     })
 
-    const result = yield* Effect.scoped(
-      run(codeInput, (loaded.plugins ?? []) as any[]),
-    )
-    yield* Console.log(JSON.stringify(result, null, 2))
+    const result = yield* Effect.scoped(run(codeInput, loaded.plugins))
+    yield* Console.log(result)
   }),
 ).pipe(
   Command.withDescription("Execute TypeScript code with plugin context"),
@@ -63,8 +53,4 @@ const command = Command.make(
 
 const MainLayer = Config.layer.pipe(Layer.provideMerge(NodeServices.layer))
 
-command.pipe(
-  Command.run({ version: "0.0.1" }),
-  Effect.provide(MainLayer),
-  NodeRuntime.runMain,
-)
+command.pipe(Command.run({ version: "0.0.1" }), Effect.provide(MainLayer), NodeRuntime.runMain)
