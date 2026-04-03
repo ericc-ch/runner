@@ -51,10 +51,11 @@ export class Config extends ServiceMap.Service<Config>()("@ericc-ch/runner/Confi
     yield* fs.makeDirectory(paths.config, { recursive: true })
 
     const loadFile = Effect.fn(function* (filePath: string) {
-      return yield* Effect.tryPromise({
-        try: () => import(filePath) as Promise<ConfigSchema>,
+      const imported = yield* Effect.tryPromise({
+        try: () => import(filePath) as Promise<{ default: ConfigSchema }>,
         catch: (cause) => new ConfigLoadError({ cause }),
       })
+      return imported.default
     })
 
     const load = Effect.fn(function* () {
@@ -64,13 +65,28 @@ export class Config extends ServiceMap.Service<Config>()("@ericc-ch/runner/Confi
       const localPath = path.join(cwd, ".runner/config.ts")
 
       const global = yield* loadFile(globalPath).pipe(
-        Effect.catchTag("ConfigLoadError", () => Effect.succeed(ConfigSchema.empty)),
+        Effect.catchTag(
+          "ConfigLoadError",
+          Effect.fn(function* (error) {
+            yield* Effect.logDebug(`Failed to load global config from ${globalPath}`, error.cause)
+            return ConfigSchema.empty
+          }),
+        ),
       )
+
       const local = yield* loadFile(localPath).pipe(
-        Effect.catchTag("ConfigLoadError", () => Effect.succeed(ConfigSchema.empty)),
+        Effect.catchTag(
+          "ConfigLoadError",
+          Effect.fn(function* (error) {
+            yield* Effect.logDebug(`Failed to load local config from ${localPath}`, error.cause)
+            return ConfigSchema.empty
+          }),
+        ),
       )
 
       const allPlugins = [...builtins.plugins, ...(global.plugins ?? []), ...(local.plugins ?? [])]
+      yield* Effect.logDebug("Loaded plugins:", allPlugins.length)
+
       return {
         plugins: allPlugins.map(makeRequiredPlugin),
       }

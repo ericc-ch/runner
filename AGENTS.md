@@ -4,7 +4,7 @@ Uses pnpm.
 
 # Post-Work Checklist
 
-Run typecheck and lint after completing any work.
+Run `pnpm run check` after completing any work.
 
 # Effect v4 Documentation
 
