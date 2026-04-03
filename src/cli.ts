@@ -1,9 +1,9 @@
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Console, Effect, FileSystem, Layer, Option, Stdio, Stream } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
-import { Config } from "./config"
-import { startMcpServer } from "./mcp"
-import { Runner } from "./runner"
+import { Config } from "./config.ts"
+import { startMcpServer } from "./mcp.ts"
+import { Runner } from "./runner.ts"
 
 const file = Argument.file("file").pipe(Argument.optional)
 

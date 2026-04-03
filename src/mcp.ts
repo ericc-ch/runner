@@ -5,8 +5,8 @@ import {
 } from "@modelcontextprotocol/server"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Effect, Layer, Schema } from "effect"
-import { Config } from "./config"
-import { Runner } from "./runner"
+import { Config } from "./config.ts"
+import { Runner } from "./runner.ts"
 
 const toMcpSchema = <T>(schema: Schema.Schema<T>): StandardSchemaWithJSON => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

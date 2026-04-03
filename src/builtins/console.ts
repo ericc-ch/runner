@@ -1,5 +1,5 @@
 import { Formatter } from "effect"
-import type { Plugin } from "../types"
+import type { Plugin } from "../types.ts"
 
 export const consolePlugin = (): Plugin => async () => {
   let logs: string[]

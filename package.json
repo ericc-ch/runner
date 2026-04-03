@@ -39,7 +39,7 @@
     "prepare": "simple-git-hooks && effect-language-service patch",
     "prepack": "pnpm run build",
     "release": "bumpp && npm publish",
-    "start": "tsx src/cli.ts",
+    "start": "node src/cli.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

@@ -1,9 +1,8 @@
 import { Effect, FileSystem, Layer, Path, Schema, ServiceMap } from "effect"
 import envPaths from "env-paths"
-import { createJiti } from "jiti"
-import { consolePlugin } from "./builtins/console"
-import { searchPlugin } from "./builtins/search"
-import type { Plugin, RequiredPlugin } from "./types"
+import { consolePlugin } from "./builtins/console.ts"
+import { searchPlugin } from "./builtins/search.ts"
+import type { Plugin, RequiredPlugin } from "./types.ts"
 
 const paths = envPaths("runner")
 
@@ -11,7 +10,7 @@ const builtins = {
   plugins: [consolePlugin(), searchPlugin()],
 }
 
-export class JitiError extends Schema.TaggedErrorClass<JitiError>()("JitiError", {
+export class ConfigLoadError extends Schema.TaggedErrorClass<ConfigLoadError>()("ConfigLoadError", {
   cause: Schema.Defect,
 }) {}
 
@@ -48,14 +47,13 @@ export class Config extends ServiceMap.Service<Config>()("@ericc-ch/runner/Confi
   make: Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
-    const jiti = createJiti(import.meta.url)
 
     yield* fs.makeDirectory(paths.config, { recursive: true })
 
     const loadFile = Effect.fn(function* (filePath: string) {
       return yield* Effect.tryPromise({
-        try: () => jiti.import(filePath) as Promise<ConfigSchema>,
-        catch: (cause) => new JitiError({ cause }),
+        try: () => import(filePath) as Promise<ConfigSchema>,
+        catch: (cause) => new ConfigLoadError({ cause }),
       })
     })
 
@@ -66,10 +64,10 @@ export class Config extends ServiceMap.Service<Config>()("@ericc-ch/runner/Confi
       const localPath = path.join(cwd, ".runner/config.ts")
 
       const global = yield* loadFile(globalPath).pipe(
-        Effect.catchTag("JitiError", () => Effect.succeed(ConfigSchema.empty)),
+        Effect.catchTag("ConfigLoadError", () => Effect.succeed(ConfigSchema.empty)),
       )
       const local = yield* loadFile(localPath).pipe(
-        Effect.catchTag("JitiError", () => Effect.succeed(ConfigSchema.empty)),
+        Effect.catchTag("ConfigLoadError", () => Effect.succeed(ConfigSchema.empty)),
       )
 
       const allPlugins = [...builtins.plugins, ...(global.plugins ?? []), ...(local.plugins ?? [])]

@@ -1,5 +1,5 @@
 import { Effect, Formatter, Layer, Ref, Schema, ServiceMap } from "effect"
-import type { RequiredHooks, RequiredPlugin, RunInput, RunOutput } from "./types"
+import type { RequiredHooks, RequiredPlugin, RunInput, RunOutput } from "./types.ts"
 
 export class HookError extends Schema.TaggedErrorClass<HookError>()("HookError", {
   hook: Schema.String,
