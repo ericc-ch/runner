@@ -35,9 +35,9 @@ Runner uses config files for plugin composition (Vite-style). Configs cascade: g
 
 ```ts
 // .runner/config.ts
-import { defineConfig } from "@ericc-ch/runner"
-import playwright from "runner-plugin-playwright" // npm package
-import { consolePlugin } from "./plugins/console" // local file
+import { defineConfig } from "@ericc-ch/runner";
+import playwright from "runner-plugin-playwright"; // npm package
+import { consolePlugin } from "./plugins/console"; // local file
 
 export default defineConfig({
   plugins: [
@@ -55,19 +55,20 @@ export default defineConfig({
               description: "Playwright browser for web automation",
             }),
           },
-        }
+        };
       },
     }),
   ],
-})
+});
 ```
 
 ### Loading Order
 
-1. Load global config (`~/.config/runner/config.ts`) if exists
-2. Load local config (`./.runner/config.ts`) if exists
-3. Merge with `defu`: local overlays global
-4. Plugins run in array order (first to last)
+1. Built-in plugins auto-loaded first
+2. Load global config (`~/.config/runner/config.ts`) if exists
+3. Load local config (`./.runner/config.ts`) if exists
+4. Concatenate plugins: builtins → global → local
+5. Plugins run in array order (first to last)
 
 ## Plugin System
 
@@ -77,26 +78,28 @@ Plugins extend Runner via hooks. Inspired by OpenCode's plugin architecture.
 
 ```ts
 // Plugin returns Hooks object
-type Plugin = () => Promise<Hooks>
+type Plugin = () => Promise<Hooks>;
 
 interface Hooks {
-  // Global lifecycle
-  setup: () => Promise<void> // Plugin init (once)
-  teardown: () => Promise<void> // Plugin cleanup (once)
+  // Global lifecycle (optional)
+  setup?: () => Promise<void>; // Plugin init (once)
+  teardown?: () => Promise<void>; // Plugin cleanup (once)
 
-  // Per-run lifecycle - return partial to merge
-  beforeRun: (input: RunInput) => Promise<Partial<RunInput> | void>
-  afterRun: (input: RunOutput) => Promise<Partial<RunOutput> | void>
+  // Per-run lifecycle - return partial to merge (optional)
+  beforeRun?: (input: RunInput) => Promise<Partial<RunInput> | void>;
+  afterRun?: (input: RunOutput) => Promise<Partial<RunOutput> | void>;
 }
 
 interface RunInput {
-  source: string
-  context: Record<string, unknown> // Just values, no wrapper
+  source: string;
+  context: Record<string, unknown>; // Just values, no wrapper
+  [key: string]: unknown;
 }
 
 interface RunOutput {
-  result: unknown
-  error: Error | null
+  result: unknown;
+  error: Error | null;
+  [key: string]: unknown;
 }
 ```
 
@@ -107,12 +110,12 @@ Plugins return bare values in `context`. Descriptions are optional - just attach
 ```ts
 // Simple - no description
 context: {
-  db: database
+  db: database;
 }
 
 // With description - use Object.assign or spread
 context: {
-  browser: Object.assign(browser, { description: "Playwright browser" })
+  browser: Object.assign(browser, { description: "Playwright browser" });
 }
 
 // Or define the value with description upfront
@@ -121,9 +124,9 @@ const myTool = Object.assign(
     /* ... */
   },
   { description: "Does something useful" },
-)
+);
 context: {
-  tool: myTool
+  tool: myTool;
 }
 ```
 
@@ -156,6 +159,7 @@ plugins.map(p => p())  →  hooks[]
 **Rules:**
 
 - Hooks run in plugin array order
+- All hooks are optional - missing hooks become empty implementations
 - `beforeRun` returns partial → shallow merged into `state`
 - `afterRun` returns partial → shallow merged into `output`
 - `beforeRun` throws → skip execute → go directly to teardown
@@ -168,73 +172,71 @@ plugins.map(p => p())  →  hooks[]
 **Console capture**
 
 ```ts
-const consolePlugin = async () => {
-  let logs: string[]
+const consolePlugin = () => async () => {
+  let logs: string[];
 
   return {
-    setup() {
-      // Initialize if needed
-    },
-    teardown() {
-      // Cleanup if needed
-    },
     beforeRun() {
-      logs = [] // Reset each run
+      logs = []; // Reset each run
       return {
         context: {
           console: Object.assign(
             {
-              log: (...args) => logs.push(args.join(" ")),
-              error: (...args) => logs.push("[ERROR] " + args.join(" ")),
-              warn: (...args) => logs.push("[WARN] " + args.join(" ")),
+              log: (...args: unknown[]) => logs.push(args.join(" ")),
+              error: (...args: unknown[]) =>
+                logs.push("[ERROR] " + args.join(" ")),
+              warn: (...args: unknown[]) =>
+                logs.push("[WARN] " + args.join(" ")),
             },
             { description: "Captured console for logging" },
           ),
         },
-      }
+      };
     },
-    afterRun({ result, error }) {
-      return {
-        result: { result, logs, error },
-      }
+    afterRun() {
+      return { logs };
     },
-  }
-}
+  };
+};
 ```
+
+};
+};
+
+````
 
 **Playwright browser**
 
 ```ts
-import { chromium } from "playwright"
+import { chromium } from "playwright";
 
 const playwrightPlugin = async () => {
-  let browser: Browser
+  let browser: Browser;
 
   return {
     async setup() {
-      browser = await chromium.launch()
+      browser = await chromium.launch();
     },
     async beforeRun() {
-      const page = await browser.newPage()
+      const page = await browser.newPage();
       return {
         context: {
           browser: Object.assign(browser, {
-            description: "Playwright browser instance for web automation",
+            description: "Playwright browser for automation",
+            methods: { newPage: "create page", close: "close browser" }
           }),
           page: Object.assign(page, {
-            description: "Active browser page, use for navigation/clicks",
+            description: "Active page for interactions",
+            methods: { goto: "navigate", click: "click element", screenshot: "capture" }
           }),
-          playwright: Object.assign(require("playwright"), {
-            description: "Playwright module with browser launchers",
-          }),
-        },
-      }
+        }
+      };
     },
     async teardown() {
-      await browser?.close()
-    },
-  }
-}
+      await browser?.close();
+    }
+  };
+};
 ```
 
 **Security/Lint**
@@ -247,23 +249,23 @@ const securityPlugin = async () => {
     beforeRun(input) {
       // Block dangerous patterns
       if (input.source.includes("eval(")) {
-        throw new Error("eval is not allowed")
+        throw new Error("eval is not allowed");
       }
       if (input.source.includes("process.exit")) {
-        throw new Error("process.exit is blocked")
+        throw new Error("process.exit is blocked");
       }
 
       // Transform source
       return {
         source: input.source.replace(/import.*fs/g, "// fs blocked"),
-      }
+      };
     },
     afterRun() {},
-  }
-}
+  };
+};
 ```
 
-**Tools helper**
+**GitHub API tool**
 
 ```ts
 const githubPlugin = async () => {
@@ -273,129 +275,243 @@ const githubPlugin = async () => {
     beforeRun() {
       return {
         context: {
-          github: Object.assign(
+          listIssues: Object.assign(
+            async (input: { owner: string; repo: string; state?: string }) => {
+              const res = await fetch(
+                `https://api.github.com/repos/${input.owner}/${input.repo}/issues?state=${input.state ?? "open"}`,
+              );
+              return res.json();
+            },
             {
-              issues: {
-                list: async (opts: { owner: string; repo: string }) => {
-                  const res = await fetch(
-                    `https://api.github.com/repos/${opts.owner}/${opts.repo}/issues`,
-                  )
-                  return res.json()
-                },
+              description: "List repository issues",
+              input: {
+                owner: "repo owner",
+                repo: "repo name",
+                state: "open|closed|all (optional)",
               },
             },
-            { description: "GitHub API client for issues, repos, PRs" },
           ),
         },
-      }
+      };
     },
     afterRun() {},
-  }
-}
+  };
+};
 ```
 
 **Database**
 
 ```ts
-import Database from "better-sqlite3"
+import Database from "better-sqlite3";
 
 const databasePlugin = async () => {
-  let db: Database
+  let db: Database;
 
   return {
     async setup() {
-      db = new Database("./data.db")
+      db = new Database("./data.db");
     },
     beforeRun() {
       return {
         context: {
           db: Object.assign(db, {
-            description: "SQLite database connection (better-sqlite3)",
+            description: "SQLite database",
+            methods: {
+              query: "execute SQL and return rows",
+              exec: "execute SQL (no return)",
+            },
           }),
         },
-      }
+      };
     },
     teardown() {
-      db?.close()
+      db?.close();
     },
-  }
+  };
+};
+```
+
+## Context Search (Built-in Plugin)
+
+Search allows agents to explore available context at runtime. Plugins register values with optional metadata - shapeless, best effort.
+
+### Metadata Design
+
+**Shapeless. Only `description` is typed (for searchability). Everything else is freeform.**
+
+```ts
+// Metadata attaches to context values
+contextValue.description = "string"  // searched
+contextValue.input = ???             // freeform
+contextValue.output = ???            // freeform
+contextValue.methods = ???           // freeform
+contextValue.examples = ???          // freeform
+contextValue.anything = ???          // freeform
+```
+
+Search returns whatever was attached. AI agents interpret it. No validation, no structure enforcement.
+
+### Metadata Examples
+
+#### Minimal - Just Description
+
+```ts
+context: {
+  db: Object.assign(database, {
+    description: "SQLite database connection",
+  });
 }
 ```
 
-## Context Discovery (Built-in Plugin)
-
-Discovery is provided by a built-in plugin. Plugins register context as bare values - if a value has a `.description` property, it's indexed for search.
-
-### How It Works
+#### Simple KV Docs
 
 ```ts
-// Built-in discovery plugin
-const discoveryPlugin = () => {
-  let contextRegistry: Record<string, unknown>
+context: {
+  query: Object.assign((sql: string) => db.prepare(sql).all(), {
+    description: "Execute SQL query",
+    input: { sql: "string - SQL query text" },
+    output: "array of row objects",
+  });
+}
+```
+
+#### Methods as Strings
+
+```ts
+context: {
+  browser: Object.assign(browser, {
+    description: "Playwright browser for web automation",
+    methods: {
+      newPage: "Create new page",
+      close: "Close browser",
+      contexts: "List all contexts",
+    },
+  });
+}
+```
+
+#### Full JSON Schema (OpenAPI)
+
+```ts
+// Auto-generated from OpenAPI spec
+context: {
+  listIssues: Object.assign(
+    async (input: { owner: string; repo: string }) => {...},
+    {
+      description: "List repository issues",
+      input: {
+        type: "object",
+        properties: {
+          owner: { type: "string" },
+          repo: { type: "string" }
+        },
+        required: ["owner", "repo"]
+      },
+      output: {
+        type: "array",
+        items: { type: "object" }
+      }
+    }
+  )
+}
+```
+
+#### Freeform - Whatever Helps
+
+```ts
+context: {
+  fetch: Object.assign(fetch, {
+    description: "HTTP fetch with retries",
+    examples: ["fetch('https://api.example.com')"],
+    docs: "https://developer.mozilla.org/en-US/docs/Web/API/fetch",
+    notes: "Auto-retries on 5xx errors",
+  });
+}
+```
+
+### Search API
+
+```ts
+// Search all context
+search();
+// => { results: [{ name: "browser", description: "...", methods: {...}, ... }] }
+
+// Search by name or description
+search({ query: "database" });
+// => { results: [{ name: "db", description: "SQLite database", ... }] }
+
+// Limit results
+search({ query: "api", limit: 5 });
+```
+
+Returns context entries with all attached metadata passed through unchanged.
+
+### Implementation
+
+```ts
+// builtins/search.ts
+import type { Plugin, RunInput } from "../types";
+
+interface SearchQuery {
+  query?: string;
+  limit?: number;
+}
+
+export const searchPlugin = (): Plugin => async () => {
+  let contextRegistry: Record<string, unknown>;
 
   return {
-    setup() {},
-    teardown() {},
-    beforeRun(input) {
-      contextRegistry = input.context
+    beforeRun: async (input: RunInput) => {
+      contextRegistry = input.context;
 
       return {
         context: {
-          list: Object.assign(
-            () =>
-              Object.entries(contextRegistry).map(([name, value]) => ({
-                name,
-                description: (value as any)?.description ?? null,
-              })),
-            { description: "List all available context items" },
-          ),
           search: Object.assign(
-            (query: string) => {
-              const q = query.toLowerCase()
-              return Object.entries(contextRegistry)
+            (query?: SearchQuery) => {
+              const q = query?.query?.toLowerCase() ?? "";
+              const limit = query?.limit ?? 10;
+
+              const results = Object.entries(contextRegistry)
                 .filter(([name, value]) => {
-                  const nameMatch = name.toLowerCase().includes(q)
-                  const descMatch = (value as any)?.description?.toLowerCase().includes(q)
-                  return nameMatch || descMatch
+                  if (!q) return true;
+
+                  const meta = value as { description?: string };
+                  const nameMatch = name.toLowerCase().includes(q);
+                  const descMatch = meta.description?.toLowerCase().includes(q);
+                  return nameMatch || descMatch;
                 })
-                .map(([name, value]) => ({
-                  name,
-                  description: (value as any)?.description ?? null,
-                }))
+                .slice(0, limit)
+                .map(([name, value]) =>
+                  Object.assign({ name }, value as object, {
+                    description:
+                      (value as { description?: string }).description ?? "",
+                  }),
+                );
+
+              return { results };
             },
-            { description: "Search context by name or description" },
+            {
+              description: "Search available context (returns all if no query)",
+              input: {
+                query: "search query (optional)",
+                limit: "max results (default 10)",
+              },
+            },
           ),
         },
-      }
+      };
     },
-    afterRun() {},
-  }
-}
+  };
+};
 ```
 
-### Agent Usage
+### Why Shapeless?
 
-```ts
-// List all available context
-const available = list()
-// => [{ name: "browser", description: "Playwright browser instance" }, ...]
-
-// Search context by name or description
-const webTools = search("web")
-// => [{ name: "browser", description: "Playwright browser for web automation" }]
-
-// Use context directly
-await browser.newPage()
-await page.click("button")
-```
-
-### Why This Matters
-
-1. **Self-documenting**: Values carry their own description
-2. **Discoverable**: Agent doesn't need all context in system prompt
-3. **Searchable**: Agent can find tools without knowing exact names
-4. **Extensible**: Third-party plugins can replace with semantic search
-5. **Optional**: Can be removed if discovery isn't needed
+1. **No typing burden** - Plugin authors don't write verbose schemas
+2. **OpenAPI works** - JSON Schema from specs passes through fine
+3. **Simple docs** - `{ sql: "query text" }` is enough for agents
+4. **Flexible** - Attach examples, links, notes - whatever helps
+5. **Best effort** - Search works with just `description`, more is optional
 
 ## Core Implementation
 
@@ -403,46 +519,51 @@ await page.click("button")
 
 ```ts
 export interface RunInput {
-  source: string
-  context: Record<string, unknown>
+  source: string;
+  context: Record<string, unknown>;
+  [key: string]: unknown;
 }
 
 export interface RunOutput {
-  result: unknown
-  error: Error | null
+  result: unknown;
+  error: Error | null;
+  [key: string]: unknown;
 }
 
 export interface Hooks {
-  setup: () => Promise<void>
-  teardown: () => Promise<void>
-  beforeRun: (input: RunInput) => Promise<Partial<RunInput> | void>
-  afterRun: (input: RunOutput) => Promise<Partial<RunOutput> | void>
+  setup?: () => Promise<void>;
+  teardown?: () => Promise<void>;
+  beforeRun?: (input: RunInput) => Promise<Partial<RunInput> | void>;
+  afterRun?: (input: RunOutput) => Promise<Partial<RunOutput> | void>;
 }
+export type Plugin = () => Promise<Hooks>;
 
-export type Plugin = () => Promise<Hooks>
+export type RequiredHooks = Required<Hooks>;
+export type RequiredPlugin = () => Promise<RequiredHooks>;
 ```
 
 ### runner.ts
 
 ```ts
-import { Effect, Schema } from "effect"
-import type { Plugin, RunInput, RunOutput } from "./types.js"
+import { Effect, Schema } from "effect";
+import type { RequiredPlugin, RunInput, RunOutput } from "./types";
 
-export class HookError extends Schema.TaggedErrorClass<HookError>()("HookError", {
-  hook: Schema.String,
-  cause: Schema.Defect,
-}) {}
+export class HookError extends Schema.TaggedErrorClass<HookError>()(
+  "HookError",
+  {
+    hook: Schema.String,
+    cause: Schema.Defect,
+  },
+) {}
 
-export const run = Effect.fn("run")((source: string, plugins: Plugin[]) =>
+export const run = Effect.fn((source: string, plugins: RequiredPlugin[]) =>
   Effect.gen(function* () {
-    // Acquire all hooks with guaranteed teardown via acquireRelease
     const hooks = yield* Effect.forEach(plugins, (plugin) =>
       Effect.acquireRelease(Effect.promise(plugin), (hook) =>
         Effect.promise(() => hook.teardown()),
       ),
-    )
+    );
 
-    // Setup phase
     yield* Effect.forEach(
       hooks,
       (hook) =>
@@ -451,29 +572,27 @@ export const run = Effect.fn("run")((source: string, plugins: Plugin[]) =>
           catch: (cause) => new HookError({ hook: "setup", cause }),
         }),
       { discard: true },
-    )
+    );
 
-    // beforeRun phase - functional transform
-    const currentState: RunInput = { source, context: {} }
+    const currentState: RunInput = { source, context: {} };
     for (const hook of hooks) {
       const result = yield* Effect.tryPromise({
         try: () => hook.beforeRun(currentState),
         catch: (cause) => new HookError({ hook: "beforeRun", cause }),
-      })
+      });
       if (result) {
-        Object.assign(currentState, result)
+        Object.assign(currentState, result);
       }
     }
 
-    // Execute
     const currentOutput: RunOutput = yield* Effect.try({
       try: () => {
-        const params = Object.keys(currentState.context)
+        const params = Object.keys(currentState.context);
         const fn = new Function(
           ...params,
           `"use strict"; return (async () => {\n${currentState.source}\n})();`,
-        )
-        return fn(...Object.values(currentState.context))
+        );
+        return fn(...Object.values(currentState.context));
       },
       catch: (error: unknown): unknown => error,
     }).pipe(
@@ -484,169 +603,169 @@ export const run = Effect.fn("run")((source: string, plugins: Plugin[]) =>
         }),
         onSuccess: (result) => ({ result, error: null }),
       }),
-    )
+    );
 
-    // afterRun phase - functional transform
     for (const hook of hooks) {
       const result = yield* Effect.tryPromise({
         try: () => hook.afterRun(currentOutput),
         catch: (cause) => new HookError({ hook: "afterRun", cause }),
-      })
+      });
       if (result) {
-        Object.assign(currentOutput, result)
+        Object.assign(currentOutput, result);
       }
     }
 
-    return { result: currentOutput.result, error: currentOutput.error }
+    return currentOutput;
   }),
-)
+);
 ```
 
 ### config.ts
 
 ```ts
-import { defu } from "defu"
-import { Effect, FileSystem, Layer, Path, Schema, ServiceMap } from "effect"
-import envPaths from "env-paths"
-import { createJiti } from "jiti"
+import { Effect, FileSystem, Layer, Path, Schema, ServiceMap } from "effect";
+import envPaths from "env-paths";
+import { createJiti } from "jiti";
+import { consolePlugin } from "./builtins/console";
+import type { Plugin, RequiredPlugin } from "./types";
 
-const paths = envPaths("runner")
+const paths = envPaths("runner");
 
-export class JitiError extends Schema.TaggedErrorClass<JitiError>()("JitiError", {
-  cause: Schema.Defect,
-}) {}
+const builtins = {
+  plugins: [consolePlugin()],
+};
+
+export class JitiError extends Schema.TaggedErrorClass<JitiError>()(
+  "JitiError",
+  {
+    cause: Schema.Defect,
+  },
+) {}
+
+const isPlugin = (u: unknown): u is Plugin => typeof u === "function";
+
+const makeRequiredPlugin =
+  (plugin: Plugin): RequiredPlugin =>
+  async () => {
+    const hooks = await plugin();
+    return {
+      setup: hooks.setup ?? (async () => {}),
+      teardown: hooks.teardown ?? (async () => {}),
+      beforeRun: hooks.beforeRun ?? (async () => {}),
+      afterRun: hooks.afterRun ?? (async () => {}),
+    };
+  };
+
+const PluginSchema = Schema.declare<Plugin>(isPlugin, {
+  title: "Plugin",
+  description: "A plugin function that returns hooks",
+});
 
 export class ConfigSchema extends Schema.Class<ConfigSchema>("ConfigSchema")({
-  plugins: Schema.optional(Schema.Array(Schema.Any)),
+  plugins: Schema.optional(Schema.Array(PluginSchema)),
 }) {
-  static readonly empty: ConfigSchema = { plugins: [] }
+  static readonly empty: ConfigSchema = { plugins: [] };
 }
 
 export function defineConfig(config: ConfigSchema): ConfigSchema {
-  return config
+  return config;
 }
 
-export class Config extends ServiceMap.Service<Config>()("@ericc-ch/runner/Config", {
-  make: Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem
-    const path = yield* Path.Path
-    const jiti = createJiti(import.meta.url)
+export class Config extends ServiceMap.Service<Config>()(
+  "@ericc-ch/runner/Config",
+  {
+    make: Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const jiti = createJiti(import.meta.url);
 
-    yield* fs.makeDirectory(paths.config, { recursive: true })
+      yield* fs.makeDirectory(paths.config, { recursive: true });
 
-    const loadFile = Effect.fn(function* (filePath: string) {
-      return yield* Effect.tryPromise({
-        try: () => jiti.import(filePath) as Promise<ConfigSchema>,
-        catch: (cause) => new JitiError({ cause }),
-      })
-    })
+      const loadFile = Effect.fn(function* (filePath: string) {
+        return yield* Effect.tryPromise({
+          try: () => jiti.import(filePath) as Promise<ConfigSchema>,
+          catch: (cause) => new JitiError({ cause }),
+        });
+      });
 
-    const load = Effect.fn(function* () {
-      const cwd = yield* Effect.sync(() => process.cwd())
+      const load = Effect.fn(function* () {
+        const cwd = yield* Effect.sync(() => process.cwd());
 
-      const globalPath = path.join(paths.config, "config.ts")
-      const localPath = path.join(cwd, ".runner/config.ts")
+        const globalPath = path.join(paths.config, "config.ts");
+        const localPath = path.join(cwd, ".runner/config.ts");
 
-      const global = yield* loadFile(globalPath).pipe(
-        Effect.catchTag("JitiError", () => Effect.succeed(ConfigSchema.empty)),
-      )
-      const local = yield* loadFile(localPath).pipe(
-        Effect.catchTag("JitiError", () => Effect.succeed(ConfigSchema.empty)),
-      )
+        const global = yield* loadFile(globalPath).pipe(
+          Effect.catchTag("JitiError", () =>
+            Effect.succeed(ConfigSchema.empty),
+          ),
+        );
+        const local = yield* loadFile(localPath).pipe(
+          Effect.catchTag("JitiError", () =>
+            Effect.succeed(ConfigSchema.empty),
+          ),
+        );
 
-      return defu(local, global)
-    })
+        const allPlugins = [
+          ...builtins.plugins,
+          ...(global.plugins ?? []),
+          ...(local.plugins ?? []),
+        ];
+        return {
+          plugins: allPlugins.map(makeRequiredPlugin),
+        };
+      });
 
-    return { load }
-  }),
-}) {
-  static readonly layer = Layer.effect(Config, Config.make)
+      return { load };
+    }),
+  },
+) {
+  static readonly layer = Layer.effect(Config, Config.make);
 }
 ```
 
-### builtins/discovery.ts
+### builtins/search.ts
 
-```ts
-// Built-in discovery plugin - provides list() and search()
-import type { Plugin, RunInput, RunOutput } from "../types.js"
+See "Context Search" section above for full implementation.
 
-export const discoveryPlugin = (): Plugin => async () => {
-  let contextRegistry: Record<string, unknown>
+Key features:
 
-  return {
-    setup: async () => {},
-    teardown: async () => {},
-    beforeRun: async (input: RunInput) => {
-      contextRegistry = input.context
-
-      return {
-        context: {
-          list: Object.assign(
-            () =>
-              Object.entries(contextRegistry).map(([name, value]) => ({
-                name,
-                description: (value as any)?.description ?? null,
-              })),
-            { description: "List all available context items" },
-          ),
-          search: Object.assign(
-            (query: string) => {
-              const q = query.toLowerCase()
-              return Object.entries(contextRegistry)
-                .filter(([name, value]) => {
-                  const nameMatch = name.toLowerCase().includes(q)
-                  const descMatch = (value as any)?.description?.toLowerCase().includes(q)
-                  return nameMatch || descMatch
-                })
-                .map(([name, value]) => ({
-                  name,
-                  description: (value as any)?.description ?? null,
-                }))
-            },
-            { description: "Search context by name or description" },
-          ),
-        },
-      }
-    },
-    afterRun: async (_output: RunOutput) => {},
-  }
-}
-```
+- `search()` - Explore available context
+- Shapeless metadata - only `description` is typed, rest is freeform
+- Best effort - works with minimal metadata, passes through everything
 
 ### builtins/console.ts
 
 ```ts
-// Built-in console capture plugin
-import type { Plugin, RunInput, RunOutput } from "../types.js"
+import type { Plugin } from "../types";
 
 export const consolePlugin = (): Plugin => async () => {
-  let logs: string[]
+  let logs: string[];
 
   return {
     setup: async () => {},
     teardown: async () => {},
     beforeRun: async () => {
-      logs = []
+      logs = [];
       return {
         context: {
           console: Object.assign(
             {
-              log: (...args: any[]) => logs.push(args.join(" ")),
-              error: (...args: any[]) => logs.push("[ERROR] " + args.join(" ")),
-              warn: (...args: any[]) => logs.push("[WARN] " + args.join(" ")),
+              log: (...args: unknown[]) => logs.push(args.join(" ")),
+              error: (...args: unknown[]) =>
+                logs.push("[ERROR] " + args.join(" ")),
+              warn: (...args: unknown[]) =>
+                logs.push("[WARN] " + args.join(" ")),
             },
             { description: "Captured console for logging" },
           ),
         },
-      }
+      };
     },
-    afterRun: async ({ result, error }: RunOutput) => {
-      return {
-        result: { result, logs, error },
-      }
+    afterRun: async () => {
+      return { logs };
     },
-  }
-}
+  };
+};
 ```
 
 ## Project Structure
@@ -658,12 +777,11 @@ runner/
 │   ├── main.ts            # Main exports (defineConfig, builtins, run, types)
 │   ├── runner.ts          # Execution engine + hooks orchestration (Effect)
 │   ├── types.ts           # Plugin, Hooks, Config types
-│   ├── config.ts          # Config loading (Effect service, jiti, defu)
+│   ├── config.ts          # Config loading (Effect service, jiti)
 │   ├── cli.ts             # CLI entry (Effect CLI)
 │   ├── mcp.ts             # MCP server (TODO)
 │   └── builtins/          # Built-in plugins
-│       ├── index.ts       # Exports all builtins
-│       ├── discovery.ts   # list() and search()
+│       ├── search.ts      # Search context with shapeless metadata
 │       └── console.ts     # Console capture
 └── REWRITE.md
 
@@ -683,10 +801,9 @@ project/
 {
   "dependencies": {
     "@effect/platform-node": "^4.0.0-beta.43",
-    "defu": "^6.1.6",
     "effect": "^4.0.0-beta.43",
     "env-paths": "^4.0.0",
-    "jiti": "^2.5.0"
+    "jiti": "^2.6.1"
   }
 }
 ```
@@ -703,12 +820,12 @@ npm install runner-plugin-playwright runner-plugin-console
 
 ```ts
 // .runner/config.ts
-import playwright from "runner-plugin-playwright"
-import console from "runner-plugin-console"
+import playwright from "runner-plugin-playwright";
+import console from "runner-plugin-console";
 
 export default defineConfig({
   plugins: [playwright(), console()],
-})
+});
 ```
 
 ### Creating a Plugin Package
@@ -751,44 +868,107 @@ export default function examplePlugin(): Plugin {
 
 ```ts
 // mcp.ts
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
-import { z } from "zod"
-import { loadConfig } from "./config.js"
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { z } from "zod";
+import { loadConfig } from "./config.js";
 
-const config = await loadConfig() // loads global + local
-const plugins = config.plugins
+const config = await loadConfig(); // loads global + local
+const plugins = config.plugins;
 
-const server = new McpServer({ name: "runner", version: "0.1.0" })
+const server = new McpServer({ name: "runner", version: "0.1.0" });
 
 server.tool(
   "execute",
-  "Execute TypeScript with full Node.js access. Plugins provide context (browser, db) via hooks. Use list() to see available context, search(query) to find specific tools.",
+  "Execute TypeScript with full Node.js access. Plugins provide context (browser, db) via hooks. Use search() to explore available context.",
   { code: z.string() },
   async ({ code }) => {
-    const result = await run(code, plugins)
+    const result = await run(code, plugins);
     return {
       content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-      isError: result && typeof result === "object" && "error" in result && result.error != null,
-    }
+      isError:
+        result &&
+        typeof result === "object" &&
+        "error" in result &&
+        result.error != null,
+    };
   },
-)
+);
 
-await server.connect(new StdioServerTransport())
+await server.connect(new StdioServerTransport());
 ```
 
-## CLI (TODO)
-
-Current CLI is a placeholder. Needs implementation:
+## CLI
 
 ```ts
-// cli.ts
-import { loadConfig } from "./config.js"
+import { NodeRuntime, NodeServices } from "@effect/platform-node";
+import {
+  Console,
+  Effect,
+  FileSystem,
+  Layer,
+  Option,
+  Stdio,
+  Stream,
+} from "effect";
+import { Argument, Command, Flag } from "effect/unstable/cli";
+import { Config } from "./config";
+import { run } from "./runner";
 
-const config = await loadConfig()
-const code = process.argv[2] ?? (await readStdin())
-const result = await run(code, config.plugins)
-console.log(JSON.stringify(result, null, 2))
+const file = Argument.file("file").pipe(Argument.optional);
+
+const evalFlag = Flag.string("eval").pipe(
+  Flag.withAlias("e"),
+  Flag.withDescription("Evaluate the given string as TypeScript code"),
+  Flag.optional,
+);
+
+const command = Command.make(
+  "runner",
+  { file, evalFlag },
+  Effect.fn("runner-cli")(function* ({ file, evalFlag }) {
+    const config = yield* Config;
+    const stdio = yield* Stdio.Stdio;
+    const fs = yield* FileSystem.FileSystem;
+    const loaded = yield* config.load();
+
+    const codeInput = yield* Option.match(evalFlag, {
+      onNone: () =>
+        Option.match(file, {
+          onNone: () => Stream.mkString(stdio.stdin.pipe(Stream.decodeText())),
+          onSome: (filePath) => fs.readFileString(filePath),
+        }),
+      onSome: (code) => Effect.succeed(code),
+    });
+
+    const result = yield* Effect.scoped(run(codeInput, loaded.plugins));
+    yield* Console.log(result);
+  }),
+).pipe(
+  Command.withDescription("Execute TypeScript code with plugin context"),
+  Command.withExamples([
+    {
+      command: "runner script.ts",
+      description: "Execute a TypeScript file",
+    },
+    {
+      command: "runner -e 'console.log(\"Hello\")'",
+      description: "Evaluate TypeScript code from string",
+    },
+    {
+      command: "cat script.ts | runner",
+      description: "Execute TypeScript code from stdin",
+    },
+  ]),
+);
+
+const MainLayer = Config.layer.pipe(Layer.provideMerge(NodeServices.layer));
+
+command.pipe(
+  Command.run({ version: "0.0.1" }),
+  Effect.provide(MainLayer),
+  NodeRuntime.runMain,
+);
 ```
 
 ## Security Note
@@ -811,16 +991,19 @@ Security plugins can block patterns via `beforeRun` hook, but this is advisory -
 
 ### Done
 
-- [x] Core types (`types.ts`)
-- [x] Runner engine with Effect v4 (`runner.ts`)
-- [x] Config loader with jiti + defu (`config.ts`)
+- [x] Core types (`types.ts`) - Optional hooks, RequiredPlugin helper
+- [x] Runner engine with Effect v4 (`runner.ts`) - Uses RequiredPlugin
+- [x] Config loader with jiti (`config.ts`) - Builtins auto-included, no defu merge
 - [x] Hook lifecycle with acquire/release pattern
+- [x] CLI implementation (`cli.ts`) - Full Effect CLI with file/eval/stdin
+- [x] `src/main.ts` - Main exports
+- [x] `src/builtins/console.ts` - Console capture plugin
+- [x] `src/builtins/search.ts` - Search plugin with shapeless metadata
+- [x] Package name updated to `@ericc-ch/runner`
 
 ### TODO
 
-- [ ] `src/main.ts` - Main exports
+- [ ] `src/openapi.ts` - OpenAPI auto-import plugin (generate tools from spec)
 - [ ] `src/mcp.ts` - MCP server implementation
-- [ ] CLI implementation (currently placeholder)
-- [ ] `src/builtins/` - Built-in plugins (discovery, console)
-- [ ] Update package name from `pkg-placeholder`
 - [ ] Tests
+````

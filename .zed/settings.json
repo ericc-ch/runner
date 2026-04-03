@@ -14,13 +14,6 @@
           "typeAware": true
         }
       }
-    },
-    "oxfmt": {
-      "initialization_options": {
-        "settings": {
-          "fmt.configPath": null
-        }
-      }
     }
   },
   "languages": {
