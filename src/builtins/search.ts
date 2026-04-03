@@ -1,4 +1,4 @@
-import type { Plugin, RunInput } from "../types.ts"
+import type { Plugin, RunInput } from "../lib/types.ts"
 
 interface SearchQuery {
   query?: string

@@ -1,8 +1,8 @@
-import { NodeRuntime, NodeServices } from "@effect/platform-node"
-import { Console, Effect, FileSystem, Layer, Option, Stdio, Stream } from "effect"
+import { Console, Effect, FileSystem, Option, Stdio, Stream } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
-import { Config } from "./config.ts"
-import { startMcpServer } from "./mcp.ts"
+import { Config } from "./lib/config.ts"
+import { runtime } from "./lib/runtime.ts"
+import { Mcp } from "./mcp.ts"
 import { Runner } from "./runner.ts"
 
 const file = Argument.file("file").pipe(Argument.optional)
@@ -58,9 +58,10 @@ const runCommand = Command.make(
 const mcpCommand = Command.make(
   "mcp",
   {},
-  Effect.fn("runner-mcp")(function* () {
+  Effect.fn(function* () {
+    const mcp = yield* Mcp
     yield* Console.log("Starting MCP server...")
-    yield* startMcpServer
+    yield* mcp.start()
   }),
 ).pipe(Command.withDescription("Start MCP server for AI agent integration"))
 
@@ -69,8 +70,4 @@ const command = Command.make("runner", {}).pipe(
   Command.withSubcommands([runCommand, mcpCommand]),
 )
 
-const MainLayer = Layer.mergeAll(Config.layer, Runner.layer).pipe(
-  Layer.provideMerge(NodeServices.layer),
-)
-
-command.pipe(Command.run({ version: "0.0.1" }), Effect.provide(MainLayer), NodeRuntime.runMain)
+void runtime.runPromise(command.pipe(Command.run({ version: "0.0.1" })))

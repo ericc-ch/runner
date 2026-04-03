@@ -1,5 +1,5 @@
-export { Config, ConfigSchema, ConfigLoadError, defineConfig } from "./config.ts"
+export { Config, ConfigSchema, ConfigLoadError, defineConfig } from "./lib/config.ts"
 export { ExecutionError, HookError, Runner } from "./runner.ts"
-export type { Hooks, Plugin, RequiredPlugin, RunInput, RunOutput } from "./types.ts"
+export type { Hooks, Plugin, RequiredPlugin, RunInput, RunOutput } from "./lib/types.ts"
 export { consolePlugin } from "./builtins/console.ts"
 export { searchPlugin } from "./builtins/search.ts"

@@ -1,7 +1,7 @@
 import { Effect, FileSystem, Layer, Path, Schema, ServiceMap } from "effect"
 import envPaths from "env-paths"
-import { consolePlugin } from "./builtins/console.ts"
-import { searchPlugin } from "./builtins/search.ts"
+import { consolePlugin } from "../builtins/console.ts"
+import { searchPlugin } from "../builtins/search.ts"
 import type { Plugin, RequiredPlugin } from "./types.ts"
 
 const paths = envPaths("runner")
@@ -16,7 +16,7 @@ export class ConfigLoadError extends Schema.TaggedErrorClass<ConfigLoadError>()(
 
 const isPlugin = (u: unknown): u is Plugin => typeof u === "function"
 
-const makeRequiredPlugin =
+export const makeRequiredPlugin =
   (plugin: Plugin): RequiredPlugin =>
   async () => {
     const hooks = await plugin()

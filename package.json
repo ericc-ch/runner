@@ -13,7 +13,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/ericc-ch/pkg-placeholder.git"
+    "url": "https://github.com/ericc-ch/runner.git"
   },
   "bin": {
     "runner": "./dist/cli.mjs"
@@ -36,6 +36,7 @@
     "build": "tsdown",
     "format": "oxfmt",
     "lint": "oxlint --type-aware",
+    "check": "pnpm run typecheck && pnpm run test && pnpm run lint",
     "prepare": "simple-git-hooks && effect-language-service patch",
     "prepack": "pnpm run build",
     "release": "bumpp && npm publish",
@@ -53,6 +54,7 @@
   },
   "devDependencies": {
     "@effect/language-service": "^0.84.3",
+    "@effect/vitest": "4.0.0-beta.43",
     "@types/node": "^25.5.0",
     "bumpp": "^11.0.1",
     "oxfmt": "^0.43.0",
