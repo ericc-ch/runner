@@ -1,3 +1,4 @@
+// Honestly dont know why I need another tsconfig here
 {
   "$schema": "https://json.schemastore.org/tsconfig.json",
 
@@ -35,12 +36,6 @@
     "forceConsistentCasingInFileNames": true,
     "erasableSyntaxOnly": true,
 
-    "types": ["node"],
-
-    "plugins": [
-      {
-        "name": "@effect/language-service"
-      }
-    ]
+    "types": ["node"]
   }
 }

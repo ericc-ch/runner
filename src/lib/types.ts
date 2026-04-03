@@ -11,7 +11,6 @@ export type RunOutput = {
 }
 
 export interface Hooks {
-  setup?: () => Promise<void>
   teardown?: () => Promise<void>
   beforeRun?: (input: RunInput) => Promise<Partial<RunInput> | void>
   afterRun?: (input: RunOutput) => Promise<Partial<RunOutput> | void>

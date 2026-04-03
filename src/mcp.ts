@@ -1,7 +1,7 @@
 import { McpServer, StdioServerTransport } from "@modelcontextprotocol/server"
 import { Effect, Layer, pipe, Schema, ServiceMap } from "effect"
 import { Config } from "./lib/config.ts"
-import { Runner } from "./runner.ts"
+import { Runner } from "./lib/runner.ts"
 
 const ExecuteInput = Schema.Struct({
   code: Schema.String,

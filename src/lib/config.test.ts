@@ -11,7 +11,6 @@ const makeTestPlugin =
 describe("makeRequiredPlugin", () => {
   it("preserves all hooks when plugin returns all hooks", async () => {
     const allHooks: Hooks = {
-      setup: async () => {},
       teardown: async () => {},
       beforeRun: async () => {},
       afterRun: async () => {},
@@ -20,7 +19,6 @@ describe("makeRequiredPlugin", () => {
     const required = makeRequiredPlugin(plugin)
     const result = await required()
 
-    strictEqual(typeof result.setup, "function")
     strictEqual(typeof result.teardown, "function")
     strictEqual(typeof result.beforeRun, "function")
     strictEqual(typeof result.afterRun, "function")
@@ -28,13 +26,12 @@ describe("makeRequiredPlugin", () => {
 
   it("fills missing hooks with defaults", async () => {
     const partialHooks: Hooks = {
-      setup: async () => {},
+      teardown: async () => {},
     }
     const plugin = makeTestPlugin(partialHooks)
     const required = makeRequiredPlugin(plugin)
     const result = await required()
 
-    strictEqual(typeof result.setup, "function")
     strictEqual(typeof result.teardown, "function")
     strictEqual(typeof result.beforeRun, "function")
     strictEqual(typeof result.afterRun, "function")
@@ -45,7 +42,6 @@ describe("makeRequiredPlugin", () => {
     const required = makeRequiredPlugin(plugin)
     const result = await required()
 
-    strictEqual(typeof result.setup, "function")
     strictEqual(typeof result.teardown, "function")
     strictEqual(typeof result.beforeRun, "function")
     strictEqual(typeof result.afterRun, "function")

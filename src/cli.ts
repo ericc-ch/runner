@@ -3,7 +3,7 @@ import { Argument, Command, Flag } from "effect/unstable/cli"
 import { Config } from "./lib/config.ts"
 import { runtime } from "./lib/runtime.ts"
 import { Mcp } from "./mcp.ts"
-import { Runner } from "./runner.ts"
+import { Runner } from "./lib/runner.ts"
 
 const file = Argument.file("file").pipe(Argument.optional)
 

@@ -1,8 +1,17 @@
 import type { Plugin, RunInput } from "../lib/types.ts"
 
-interface SearchQuery {
+interface SearchOptions {
   query?: string
   limit?: number
+}
+
+interface Indexable {
+  description?: string
+  meta?: unknown
+}
+
+const isIndexable = (value: unknown): value is Indexable => {
+  return typeof value === "object" && value !== null && ("description" in value || "meta" in value)
 }
 
 export const searchPlugin = (): Plugin => async () => {
@@ -15,25 +24,37 @@ export const searchPlugin = (): Plugin => async () => {
       return {
         context: {
           search: Object.assign(
-            (query?: SearchQuery) => {
-              const q = query?.query?.toLowerCase() ?? ""
-              const limit = query?.limit ?? 10
+            (options?: SearchOptions) => {
+              const query = options?.query?.toLowerCase() ?? ""
+              const limit = options?.limit ?? 10
 
               const results = Object.entries(contextRegistry)
                 .filter(([name, value]) => {
-                  if (!q) return true
+                  if (!query) return true
+                  if (!isIndexable(value)) return false
 
-                  const meta = value as { description?: string }
-                  const nameMatch = name.toLowerCase().includes(q)
-                  const descMatch = meta.description?.toLowerCase().includes(q)
+                  const nameMatch = name.toLowerCase().includes(query)
+                  const descMatch = value.description?.toLowerCase().includes(query)
                   return nameMatch || descMatch
                 })
                 .slice(0, limit)
-                .map(([name, value]) =>
-                  Object.assign({ name }, value as object, {
-                    description: (value as { description?: string }).description ?? "",
-                  }),
-                )
+                .map(([name, value]) => {
+                  const item = isIndexable(value) ? value : {}
+                  const result: {
+                    name: string
+                    description: string
+                    meta?: unknown
+                  } = {
+                    name,
+                    description: item.description ?? "",
+                  }
+
+                  if (item.meta !== undefined) {
+                    result.meta = item.meta
+                  }
+
+                  return result
+                })
 
               return { results }
             },

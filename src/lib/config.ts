@@ -1,10 +1,8 @@
 import { Effect, FileSystem, Layer, Path, Schema, ServiceMap } from "effect"
-import envPaths from "env-paths"
 import { consolePlugin } from "../builtins/console.ts"
 import { searchPlugin } from "../builtins/search.ts"
+import { paths } from "./paths.ts"
 import type { Plugin, RequiredPlugin } from "./types.ts"
-
-const paths = envPaths("runner")
 
 const builtins = {
   plugins: [consolePlugin(), searchPlugin()],
@@ -21,7 +19,6 @@ export const makeRequiredPlugin =
   async () => {
     const hooks = await plugin()
     return {
-      setup: hooks.setup ?? (async () => {}),
       teardown: hooks.teardown ?? (async () => {}),
       beforeRun: hooks.beforeRun ?? (async () => {}),
       afterRun: hooks.afterRun ?? (async () => {}),

@@ -1,5 +1,5 @@
 import { Effect, Formatter, Layer, Schema, ServiceMap } from "effect"
-import type { RequiredHooks, RequiredPlugin, RunInput, RunOutput } from "./lib/types.ts"
+import type { RequiredHooks, RequiredPlugin, RunInput, RunOutput } from "./types.ts"
 
 export class HookError extends Schema.TaggedErrorClass<HookError>()("HookError", {
   hook: Schema.String,
@@ -16,13 +16,6 @@ export class Runner extends ServiceMap.Service<Runner>()("@ericc-ch/runner/Runne
 
     const init = Effect.fn(function* (plugins: RequiredPlugin[]) {
       hooks = yield* Effect.forEach(plugins, (plugin) => Effect.promise(plugin))
-
-      yield* Effect.forEach(hooks, (hook) =>
-        Effect.tryPromise({
-          try: () => hook.setup(),
-          catch: (cause) => new HookError({ hook: "setup", cause }),
-        }),
-      )
     })
 
     const execute = Effect.fn(function* (source: string) {

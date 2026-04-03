@@ -138,7 +138,6 @@ export default defineConfig({
 
 Plugin hooks:
 
-- `setup` - Initialize plugin (runs once)
 - `teardown` - Cleanup plugin (runs once)
 - `beforeRun` - Inject context before each execution
 - `afterRun` - Process output after each execution
