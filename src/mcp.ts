@@ -35,7 +35,7 @@ export class Mcp extends ServiceMap.Service<Mcp>()("@ericc-ch/runner/Mcp", {
         "execute",
         {
           description:
-            "Execute TypeScript with full Node.js access. Plugins provide context (browser, db, etc). Use search() to explore available context.",
+            "Execute TypeScript with full Node.js access. Context objects, variables, and functions are provided by user-configured plugins - browser automation, database connections, file system, APIs, or custom setups. Use this when you need to make multiple tool calls in sequence where each step depends on the previous result. Unlike parallel tool calls, this lets you run code, inspect the result, and continue execution in a single session without stopping to analyze intermediate output. Call search first to see what context is available.",
           inputSchema: pipe(ExecuteInput, Schema.toStandardSchemaV1, Schema.toStandardJSONSchemaV1),
         },
         async (args) => {
@@ -52,7 +52,7 @@ export class Mcp extends ServiceMap.Service<Mcp>()("@ericc-ch/runner/Mcp", {
         "search",
         {
           description:
-            "Search available context from plugins. Returns context entries with descriptions and metadata.",
+            "List all available context from loaded plugins - objects, functions, and variables you can access. Returns names, types, and descriptions. Use this before execute to know what APIs you have available.",
           inputSchema: pipe(SearchInput, Schema.toStandardSchemaV1, Schema.toStandardJSONSchemaV1),
         },
         async (args) => {

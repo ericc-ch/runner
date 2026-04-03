@@ -38,7 +38,7 @@ const runCommand = Command.make(
     yield* Console.log(result)
   }),
 ).pipe(
-  Command.withDescription("Execute TypeScript code with plugin context"),
+  Command.withDescription("Execute TypeScript with plugin-provided context"),
   Command.withExamples([
     {
       command: "runner run script.ts",
@@ -63,10 +63,10 @@ const mcpCommand = Command.make(
     yield* Console.log("Starting MCP server...")
     yield* mcp.start()
   }),
-).pipe(Command.withDescription("Start MCP server for AI agent integration"))
+).pipe(Command.withDescription("Start MCP server for AI agent and IDE integration"))
 
 const command = Command.make("runner", {}).pipe(
-  Command.withDescription("TypeScript execution engine for AI agents"),
+  Command.withDescription("TypeScript execution environment with plugin-based context injection"),
   Command.withSubcommands([runCommand, mcpCommand]),
 )
 

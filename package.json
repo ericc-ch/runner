@@ -1,12 +1,14 @@
 {
   "name": "@ericc-ch/runner",
   "version": "0.0.1",
-  "description": "_description_",
+  "description": "TypeScript execution engine for AI agents",
   "keywords": [
-    "pkg-placeholder"
+    "agent",
+    "ai",
+    "mcp"
   ],
-  "homepage": "https://github.com/ericc-ch/pkg-placeholder",
-  "bugs": "https://github.com/ericc-ch/pkg-placeholder/issues",
+  "homepage": "https://github.com/ericc-ch/runner",
+  "bugs": "https://github.com/ericc-ch/runner/issues",
   "author": {
     "name": "Erick Christian",
     "email": "erickchristian48@gmail.com"
@@ -45,12 +47,10 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@cfworker/json-schema": "^4.1.1",
     "@effect/platform-node": "^4.0.0-beta.43",
     "@modelcontextprotocol/server": "2.0.0-alpha.2",
     "effect": "^4.0.0-beta.43",
-    "env-paths": "^4.0.0",
-    "jiti": "^2.6.1"
+    "env-paths": "^4.0.0"
   },
   "devDependencies": {
     "@effect/language-service": "^0.84.3",
