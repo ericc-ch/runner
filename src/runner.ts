@@ -1,4 +1,4 @@
-import { Effect, Layer, Ref, Schema, ServiceMap } from "effect"
+import { Effect, Formatter, Layer, Ref, Schema, ServiceMap } from "effect"
 import type { RequiredHooks, RequiredPlugin, RunInput, RunOutput } from "./types"
 
 export class HookError extends Schema.TaggedErrorClass<HookError>()("HookError", {
@@ -68,7 +68,7 @@ export class Runner extends ServiceMap.Service<Runner>()("@ericc-ch/runner/Runne
           Effect.match({
             onFailure: (error) => ({
               result: undefined,
-              error: error instanceof Error ? error : new Error(String(error)),
+              error: Formatter.format(error),
             }),
             onSuccess: (result) => ({ result, error: undefined }),
           }),
