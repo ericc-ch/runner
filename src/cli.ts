@@ -2,6 +2,7 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Console, Effect, FileSystem, Layer, Option, Stdio, Stream } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
 import { Config } from "./config"
+import { startMcpServer } from "./mcp"
 import { Runner } from "./runner"
 
 const file = Argument.file("file").pipe(Argument.optional)
@@ -12,10 +13,10 @@ const evalFlag = Flag.string("eval").pipe(
   Flag.optional,
 )
 
-const command = Command.make(
-  "runner",
+const runCommand = Command.make(
+  "run",
   { file, evalFlag },
-  Effect.fn("runner-cli")(function* ({ file, evalFlag }) {
+  Effect.fn(function* ({ file, evalFlag }) {
     const config = yield* Config
     const runner = yield* Runner
     const stdio = yield* Stdio.Stdio
@@ -40,18 +41,32 @@ const command = Command.make(
   Command.withDescription("Execute TypeScript code with plugin context"),
   Command.withExamples([
     {
-      command: "runner script.ts",
+      command: "runner run script.ts",
       description: "Execute a TypeScript file",
     },
     {
-      command: "runner -e 'console.log(\"Hello\")'",
+      command: "runner run -e 'console.log(\"Hello\")'",
       description: "Evaluate TypeScript code from string",
     },
     {
-      command: "cat script.ts | runner",
+      command: "cat script.ts | runner run",
       description: "Execute TypeScript code from stdin",
     },
   ]),
+)
+
+const mcpCommand = Command.make(
+  "mcp",
+  {},
+  Effect.fn("runner-mcp")(function* () {
+    yield* Console.log("Starting MCP server...")
+    yield* startMcpServer
+  }),
+).pipe(Command.withDescription("Start MCP server for AI agent integration"))
+
+const command = Command.make("runner", {}).pipe(
+  Command.withDescription("TypeScript execution engine for AI agents"),
+  Command.withSubcommands([runCommand, mcpCommand]),
 )
 
 const MainLayer = Layer.mergeAll(Config.layer, Runner.layer).pipe(

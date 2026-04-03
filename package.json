@@ -44,7 +44,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@cfworker/json-schema": "^4.1.1",
     "@effect/platform-node": "^4.0.0-beta.43",
+    "@modelcontextprotocol/server": "2.0.0-alpha.2",
     "effect": "^4.0.0-beta.43",
     "env-paths": "^4.0.0",
     "jiti": "^2.6.1"
