@@ -4,9 +4,9 @@ export interface RunInput {
   [key: string]: unknown
 }
 
-export interface RunOutput {
+export type RunOutput = {
   result: unknown
-  error: Error | null
+  error: unknown
   [key: string]: unknown
 }
 

@@ -2,7 +2,7 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Console, Effect, FileSystem, Layer, Option, Stdio, Stream } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
 import { Config } from "./config"
-import { run } from "./runner"
+import { Runner } from "./runner"
 
 const file = Argument.file("file").pipe(Argument.optional)
 
@@ -17,6 +17,7 @@ const command = Command.make(
   { file, evalFlag },
   Effect.fn("runner-cli")(function* ({ file, evalFlag }) {
     const config = yield* Config
+    const runner = yield* Runner
     const stdio = yield* Stdio.Stdio
     const fs = yield* FileSystem.FileSystem
     const loaded = yield* config.load()
@@ -30,7 +31,9 @@ const command = Command.make(
       onSome: (code) => Effect.succeed(code),
     })
 
-    const result = yield* Effect.scoped(run(codeInput, loaded.plugins))
+    yield* runner.init(loaded.plugins)
+    const result = yield* runner.execute(codeInput)
+    yield* runner.teardown
     yield* Console.log(result)
   }),
 ).pipe(
@@ -51,6 +54,8 @@ const command = Command.make(
   ]),
 )
 
-const MainLayer = Config.layer.pipe(Layer.provideMerge(NodeServices.layer))
+const MainLayer = Layer.mergeAll(Config.layer, Runner.layer).pipe(
+  Layer.provideMerge(NodeServices.layer),
+)
 
 command.pipe(Command.run({ version: "0.0.1" }), Effect.provide(MainLayer), NodeRuntime.runMain)
