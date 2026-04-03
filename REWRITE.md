@@ -35,9 +35,9 @@ Runner uses config files for plugin composition (Vite-style). Configs cascade: g
 
 ```ts
 // .runner/config.ts
-import { defineConfig } from "@ericc-ch/runner";
-import playwright from "runner-plugin-playwright"; // npm package
-import { consolePlugin } from "./plugins/console"; // local file
+import { defineConfig } from "@ericc-ch/runner"
+import playwright from "runner-plugin-playwright" // npm package
+import { consolePlugin } from "./plugins/console" // local file
 
 export default defineConfig({
   plugins: [
@@ -55,11 +55,11 @@ export default defineConfig({
               description: "Playwright browser for web automation",
             }),
           },
-        };
+        }
       },
     }),
   ],
-});
+})
 ```
 
 ### Loading Order
@@ -78,28 +78,28 @@ Plugins extend Runner via hooks. Inspired by OpenCode's plugin architecture.
 
 ```ts
 // Plugin returns Hooks object
-type Plugin = () => Promise<Hooks>;
+type Plugin = () => Promise<Hooks>
 
 interface Hooks {
   // Global lifecycle (optional)
-  setup?: () => Promise<void>; // Plugin init (once)
-  teardown?: () => Promise<void>; // Plugin cleanup (once)
+  setup?: () => Promise<void> // Plugin init (once)
+  teardown?: () => Promise<void> // Plugin cleanup (once)
 
   // Per-run lifecycle - return partial to merge (optional)
-  beforeRun?: (input: RunInput) => Promise<Partial<RunInput> | void>;
-  afterRun?: (input: RunOutput) => Promise<Partial<RunOutput> | void>;
+  beforeRun?: (input: RunInput) => Promise<Partial<RunInput> | void>
+  afterRun?: (input: RunOutput) => Promise<Partial<RunOutput> | void>
 }
 
 interface RunInput {
-  source: string;
-  context: Record<string, unknown>; // Just values, no wrapper
-  [key: string]: unknown;
+  source: string
+  context: Record<string, unknown> // Just values, no wrapper
+  [key: string]: unknown
 }
 
 interface RunOutput {
-  result: unknown;
-  error: Error | null;
-  [key: string]: unknown;
+  result: unknown
+  error: Error | null
+  [key: string]: unknown
 }
 ```
 
@@ -110,12 +110,12 @@ Plugins return bare values in `context`. Descriptions are optional - just attach
 ```ts
 // Simple - no description
 context: {
-  db: database;
+  db: database
 }
 
 // With description - use Object.assign or spread
 context: {
-  browser: Object.assign(browser, { description: "Playwright browser" });
+  browser: Object.assign(browser, { description: "Playwright browser" })
 }
 
 // Or define the value with description upfront
@@ -124,9 +124,9 @@ const myTool = Object.assign(
     /* ... */
   },
   { description: "Does something useful" },
-);
+)
 context: {
-  tool: myTool;
+  tool: myTool
 }
 ```
 
@@ -173,31 +173,29 @@ plugins.map(p => p())  →  hooks[]
 
 ```ts
 const consolePlugin = () => async () => {
-  let logs: string[];
+  let logs: string[]
 
   return {
     beforeRun() {
-      logs = []; // Reset each run
+      logs = [] // Reset each run
       return {
         context: {
           console: Object.assign(
             {
               log: (...args: unknown[]) => logs.push(args.join(" ")),
-              error: (...args: unknown[]) =>
-                logs.push("[ERROR] " + args.join(" ")),
-              warn: (...args: unknown[]) =>
-                logs.push("[WARN] " + args.join(" ")),
+              error: (...args: unknown[]) => logs.push("[ERROR] " + args.join(" ")),
+              warn: (...args: unknown[]) => logs.push("[WARN] " + args.join(" ")),
             },
             { description: "Captured console for logging" },
           ),
         },
-      };
+      }
     },
     afterRun() {
-      return { logs };
+      return { logs }
     },
-  };
-};
+  }
+}
 ```
 
 };
