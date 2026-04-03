@@ -62,7 +62,7 @@ Example usage:
 
 ```typescript
 // Search for available context
-await search({ query: "database" });
+await search({ query: "database" })
 
 // Use the context
 await execute({
@@ -70,7 +70,7 @@ await execute({
     const users = db.query("SELECT * FROM users")
     return users
   `,
-});
+})
 ```
 
 ### search
@@ -100,13 +100,13 @@ Examples:
 
 ```typescript
 // List all available context
-search();
+search()
 
 // Search for database-related context
-search({ query: "database" });
+search({ query: "database" })
 
 // Limit results
-search({ query: "api", limit: 5 });
+search({ query: "api", limit: 5 })
 ```
 
 ## Plugins
@@ -114,7 +114,7 @@ search({ query: "api", limit: 5 });
 Plugins extend Runner through hooks:
 
 ```typescript
-import { defineConfig } from "@ericc-ch/runner";
+import { defineConfig } from "@ericc-ch/runner"
 
 export default defineConfig({
   plugins: [
@@ -129,11 +129,11 @@ export default defineConfig({
               description: "API client for external service",
             }),
           },
-        };
+        }
       },
     }),
   ],
-});
+})
 ```
 
 Plugin hooks:
@@ -173,7 +173,7 @@ Auto-generate tools from OpenAPI specifications. The plugin will:
 Example:
 
 ```typescript
-import openapiPlugin from "runner-plugin-openapi";
+import openapiPlugin from "runner-plugin-openapi"
 
 export default defineConfig({
   plugins: [
@@ -183,7 +183,7 @@ export default defineConfig({
       auth: { apiKey: process.env.API_KEY },
     }),
   ],
-});
+})
 ```
 
 ### Security via Deno
