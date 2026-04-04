@@ -9,8 +9,8 @@ The runner currently executes TypeScript/JavaScript code using `new Function()`:
 const fn = new Function(
   ...params,
   `"use strict"; return (async () => {\n${currentState.source}\n})();`,
-);
-return await fn(...values);
+)
+return await fn(...values)
 ```
 
 **Characteristics:**
@@ -35,7 +35,7 @@ beforeRun: async () => ({
     context, // BrowserContext instance
     page, // Page instance
   },
-});
+})
 ```
 
 These objects have state, methods, and async operations that cannot be:
@@ -123,24 +123,24 @@ const createToolBridge = (
   pendingDeferreds: Set<QuickJSDeferredPromise>,
 ): QuickJSHandle =>
   context.newFunction("__executor_invokeTool", (pathHandle, argsHandle) => {
-    const path = context.getString(pathHandle);
-    const args = context.dump(argsHandle);
-    const deferred = context.newPromise();
-    pendingDeferreds.add(deferred);
+    const path = context.getString(pathHandle)
+    const args = context.dump(argsHandle)
+    const deferred = context.newPromise()
+    pendingDeferreds.add(deferred)
 
     // Execute in host process
     void Effect.runPromise(toolInvoker.invoke({ path, args })).then(
       (value) => {
-        const serialized = JSON.stringify(value);
-        deferred.resolve(context.newString(serialized));
+        const serialized = JSON.stringify(value)
+        deferred.resolve(context.newString(serialized))
       },
       (cause) => {
-        deferred.reject(context.newError(toErrorMessage(cause)));
+        deferred.reject(context.newError(toErrorMessage(cause)))
       },
-    );
+    )
 
-    return deferred.handle; // Return promise to sandbox
-  });
+    return deferred.handle // Return promise to sandbox
+  })
 ```
 
 **Sandbox-side proxy generation:**
@@ -150,19 +150,19 @@ const createToolBridge = (
 const __makeToolsProxy = (path = []) =>
   new Proxy(() => undefined, {
     get(_target, prop) {
-      if (prop === "then" || typeof prop === "symbol") return undefined;
-      return __makeToolsProxy([...path, String(prop)]); // Chain path
+      if (prop === "then" || typeof prop === "symbol") return undefined
+      return __makeToolsProxy([...path, String(prop)]) // Chain path
     },
     apply(_target, _thisArg, args) {
-      const toolPath = path.join(".");
-      if (!toolPath) throw new Error("Tool path missing");
+      const toolPath = path.join(".")
+      if (!toolPath) throw new Error("Tool path missing")
       // Call bridge function, parse JSON result
       return Promise.resolve(__invokeTool(toolPath, args[0])).then((raw) =>
         raw === undefined ? undefined : JSON.parse(raw),
-      );
+      )
     },
-  });
-const tools = __makeToolsProxy();
+  })
+const tools = __makeToolsProxy()
 ```
 
 **IPC Mechanism:** Direct function call bridge (same memory, different context)
@@ -184,17 +184,17 @@ Uses Node.js child process with IPC (`process.send`):
 // Host process
 const onMessage = (message: WorkerMessage) => {
   if (message.type === "tool-call") {
-    void Effect.runPromise(
-      toolInvoker.invoke({ path: message.path, args: message.args }),
-    ).then((value) => {
-      sendMessage(child, {
-        type: "tool-response",
-        callId: message.callId,
-        value,
-      });
-    });
+    void Effect.runPromise(toolInvoker.invoke({ path: message.path, args: message.args })).then(
+      (value) => {
+        sendMessage(child, {
+          type: "tool-response",
+          callId: message.callId,
+          value,
+        })
+      },
+    )
   }
-};
+}
 ```
 
 **Worker process (`sandbox-worker.mjs`):**
@@ -204,31 +204,31 @@ const onMessage = (message: WorkerMessage) => {
 const makeToolsProxy = (path = []) =>
   new Proxy(() => undefined, {
     get(_target, prop) {
-      if (prop === "then" || typeof prop === "symbol") return undefined;
-      return makeToolsProxy([...path, prop]);
+      if (prop === "then" || typeof prop === "symbol") return undefined
+      return makeToolsProxy([...path, prop])
     },
     apply(_target, _thisArg, args) {
-      const callId = `call_${nextCallId++}`;
+      const callId = `call_${nextCallId++}`
       return new Promise((resolve, reject) => {
-        pendingToolCalls.set(callId, { resolve, reject });
+        pendingToolCalls.set(callId, { resolve, reject })
         process.send?.({
           type: "tool-call",
           callId,
           path: path.join("."),
           args: args[0],
-        });
-      });
+        })
+      })
     },
-  });
+  })
 
 // Handle responses from host
 process.on("message", (message) => {
   if (message.type === "tool-response") {
-    const pending = pendingToolCalls.get(message.callId);
-    if (message.error) pending.reject(new Error(message.error));
-    else pending.resolve(message.value);
+    const pending = pendingToolCalls.get(message.callId)
+    if (message.error) pending.reject(new Error(message.error))
+    else pending.resolve(message.value)
   }
-});
+})
 ```
 
 **IPC Mechanism:** Node.js `process.send()` / `child.on('message')`
@@ -248,54 +248,54 @@ Uses stdin/stdout with JSON lines:
 
 ```ts
 // IPC protocol with prefix to distinguish from user output
-const IPC_PREFIX = "@@executor-ipc@@";
+const IPC_PREFIX = "@@executor-ipc@@"
 
 // Host sends
 const writeMessage = (stdin: NodeJS.WritableStream, message) => {
-  stdin.write(`${JSON.stringify(message)}\n`);
-};
+  stdin.write(`${JSON.stringify(message)}\n`)
+}
 
 // Host receives
 const handleStdoutLine = (rawLine: string) => {
-  const line = rawLine.trim();
-  if (!line.startsWith(IPC_PREFIX)) return;
+  const line = rawLine.trim()
+  if (!line.startsWith(IPC_PREFIX)) return
 
-  const message = JSON.parse(line.slice(IPC_PREFIX.length));
+  const message = JSON.parse(line.slice(IPC_PREFIX.length))
   if (message.type === "tool_call") {
     const result = await toolInvoker.invoke({
       path: message.toolPath,
       args: message.args,
-    });
+    })
     writeMessage(stdin, {
       type: "tool_result",
       requestId,
       ok: true,
       value: result,
-    });
+    })
   }
-};
+}
 ```
 
 **Worker process (`deno-subprocess-worker.mjs`):**
 
 ```ts
 const writeIpcMessage = (message) => {
-  const payload = `${IPC_PREFIX}${JSON.stringify(message)}\n`;
-  Deno.stdout.writeSync(encoder.encode(payload));
-};
+  const payload = `${IPC_PREFIX}${JSON.stringify(message)}\n`
+  Deno.stdout.writeSync(encoder.encode(payload))
+}
 
 const createToolCaller = (toolPath) => (args) =>
   new Promise((resolve, reject) => {
-    const requestId = crypto.randomUUID();
-    pendingToolCalls.set(requestId, { resolve, reject });
-    writeIpcMessage({ type: "tool_call", requestId, toolPath, args });
-  });
+    const requestId = crypto.randomUUID()
+    pendingToolCalls.set(requestId, { resolve, reject })
+    writeIpcMessage({ type: "tool_call", requestId, toolPath, args })
+  })
 
 // Read responses from stdin
 const decodeLines = async () => {
-  const reader = Deno.stdin.readable.getReader();
+  const reader = Deno.stdin.readable.getReader()
   // Parse JSON lines, handle tool_result messages
-};
+}
 ```
 
 **IPC Mechanism:** stdin/stdout JSON lines with prefix
@@ -368,25 +368,23 @@ The pattern enables security hooks that `new Function()` cannot:
 // Example: Auditing all calls
 const toolInvoker = {
   invoke: async ({ path, args }) => {
-    auditLog({ timestamp: Date.now(), path, args });
+    auditLog({ timestamp: Date.now(), path, args })
 
     // Example: Require user approval for navigation
     if (path === "page.goto" || path.startsWith("browser.")) {
-      const approved = await promptUser(
-        `Allow ${path}(${JSON.stringify(args)})?`,
-      );
-      if (!approved) throw new Error("User denied");
+      const approved = await promptUser(`Allow ${path}(${JSON.stringify(args)})?`)
+      if (!approved) throw new Error("User denied")
     }
 
     // Example: Rate limit
     if (rateLimiter.exceeded(path)) {
-      throw new Error("Rate limit exceeded");
+      throw new Error("Rate limit exceeded")
     }
 
     // Actually call the method
-    return actualObject[path.split(".")[0]][path.split(".")[1]](args);
+    return actualObject[path.split(".")[0]][path.split(".")[1]](args)
   },
-};
+}
 ```
 
 ## Runtime Implementation Details
@@ -402,13 +400,13 @@ const proxy = new Proxy(
     get(target, prop) {
       // This function signature requires immediate return
       // Cannot return Promise, cannot await anything
-      return ipc.sendAndWait({ type: "get", prop }); // WRONG - returns Promise
+      return ipc.sendAndWait({ type: "get", prop }) // WRONG - returns Promise
     },
   },
-);
+)
 
-const value = proxy.property; // User expects value, gets Promise
-await proxy.property; // Wrong usage - property access shouldn't need await
+const value = proxy.property // User expects value, gets Promise
+await proxy.property // Wrong usage - property access shouldn't need await
 ```
 
 This is a fundamental JavaScript limitation. Property access (`obj.prop`) is synchronous by design.
@@ -416,17 +414,17 @@ This is a fundamental JavaScript limitation. Property access (`obj.prop`) is syn
 **Executor's workaround:** Treat everything as method calls:
 
 ```ts
-tools.page.url; // Returns Proxy, not the URL string
-tools.page.url(); // apply() trap → IPC → Promise → await gives value
+tools.page.url // Returns Proxy, not the URL string
+tools.page.url() // apply() trap → IPC → Promise → await gives value
 ```
 
 **Problem for Runner:** Playwright has actual properties, not just methods:
 
 ```ts
-page.viewportSize; // Property - can't proxy via executor pattern
-page.url(); // Method - works with executor pattern
-response.url; // Property - can't proxy
-response.status(); // Method - works
+page.viewportSize // Property - can't proxy via executor pattern
+page.url() // Method - works with executor pattern
+response.url // Property - can't proxy
+response.status() // Method - works
 ```
 
 **Functions also cannot cross boundary:** Methods like `page.evaluate(fn)` or `page.waitForFunction(fn)` accept function arguments. Functions contain:
@@ -438,8 +436,8 @@ response.status(); // Method - works
 
 ```ts
 // In sandbox
-const config = { timeout: 5000 };
-await page.evaluate(() => config.timeout); // config is in sandbox, not host!
+const config = { timeout: 5000 }
+await page.evaluate(() => config.timeout) // config is in sandbox, not host!
 // Playwright can't access sandbox closure
 ```
 
@@ -450,8 +448,8 @@ page.route("**/*.png", async (route, request) => {
   // Playwright CALLS THIS when request comes
   // route/request objects come from Playwright (host side)
   // Handler needs to run in sandbox but use host objects
-  await route.fulfill({ body: "blocked" }); // route is in host, handler in sandbox
-});
+  await route.fulfill({ body: "blocked" }) // route is in host, handler in sandbox
+})
 ```
 
 This requires reverse proxy: host calling sandbox. Complex problem.
@@ -461,13 +459,10 @@ This requires reverse proxy: host calling sandbox. Complex problem.
 **Implementation:**
 
 ```ts
-const params = Object.keys(context);
-const values = Object.values(context);
-const fn = new Function(
-  ...params,
-  `"use strict"; return (async () => {\n${source}\n})();`,
-);
-return await fn(...values);
+const params = Object.keys(context)
+const values = Object.values(context)
+const fn = new Function(...params, `"use strict"; return (async () => {\n${source}\n})();`)
+return await fn(...values)
 ```
 
 **Capabilities:**
@@ -488,12 +483,12 @@ return await fn(...values);
 
 ```ts
 // User code can:
-process.env; // Read all environment variables
-require("fs").readFileSync(); // Access filesystem
+process.env // Read all environment variables
+require("fs").readFileSync() // Access filesystem
 global(
   // Access Node.js globals
   {},
-).constructor.constructor("return this")(); // Escape to global scope
+).constructor.constructor("return this")() // Escape to global scope
 ```
 
 **Pros:**
@@ -517,17 +512,17 @@ global(
 **Implementation:**
 
 ```ts
-import vm from "node:vm";
+import vm from "node:vm"
 
 const context = vm.createContext({
   page: pageObject,
   browser: browserObject,
   console: { log: (...args) => logs.push(args) },
   // No process, require, global, etc.
-});
+})
 
-const script = new vm.Script(transpiledCode);
-script.runInContext(context, { timeout: 5000 });
+const script = new vm.Script(transpiledCode)
+script.runInContext(context, { timeout: 5000 })
 ```
 
 **Capabilities:**
@@ -548,15 +543,13 @@ script.runInContext(context, { timeout: 5000 });
 
 ```ts
 // Escape hatches in vm:
-const vm = require("node:vm");
-const context = vm.createContext({});
+const vm = require("node:vm")
+const context = vm.createContext({})
 
 // This can still escape:
-const script = new vm.Script(
-  'this.constructor.constructor("return process")()',
-);
-const process = script.runInContext(context);
-process.env; // Still accessible!
+const script = new vm.Script('this.constructor.constructor("return process")()')
+const process = script.runInContext(context)
+process.env // Still accessible!
 ```
 
 Node.js documentation explicitly states: "vm module is not a security mechanism. Do not use it to run untrusted code."
@@ -570,9 +563,9 @@ const sandbox = Object.freeze({
   console: mockConsole,
   setTimeout: limitedSetTimeout,
   // Explicitly no process, require, global, constructor access
-});
+})
 
-const context = vm.createContext(sandbox);
+const context = vm.createContext(sandbox)
 ```
 
 But prototype chain escapes still possible. Use `vm.runInNewContext()` for slightly better isolation.
@@ -644,40 +637,40 @@ But prototype chain escapes still possible. Use `vm.runInNewContext()` for sligh
 
 ```ts
 // Worker thread
-import { Worker, parentPort } from "node:worker_threads";
+import { Worker, parentPort } from "node:worker_threads"
 
-const sab = new SharedArrayBuffer(16384); // 16KB for JSON payloads
-const view = new Int32Array(sab, 0, 4); // Control flags
-const buffer = new Uint8Array(sab, 4); // JSON payload area
+const sab = new SharedArrayBuffer(16384) // 16KB for JSON payloads
+const view = new Int32Array(sab, 0, 4) // Control flags
+const buffer = new Uint8Array(sab, 4) // JSON payload area
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
+const encoder = new TextEncoder()
+const decoder = new TextDecoder()
 
 function writeRequest(data: object) {
-  const json = JSON.stringify(data);
-  const bytes = encoder.encode(json);
-  buffer.set(bytes);
-  view[1] = bytes.length; // Store length
+  const json = JSON.stringify(data)
+  const bytes = encoder.encode(json)
+  buffer.set(bytes)
+  view[1] = bytes.length // Store length
 }
 
 function readResult(): unknown {
-  const length = view[2];
-  const bytes = buffer.slice(0, length);
-  const json = decoder.decode(bytes);
-  return JSON.parse(json);
+  const length = view[2]
+  const bytes = buffer.slice(0, length)
+  const json = decoder.decode(bytes)
+  return JSON.parse(json)
 }
 
 const proxy = new Proxy(
   {},
   {
     get(target, prop) {
-      writeRequest({ type: "get", objectId: "page", prop: String(prop) });
-      view[0] = REQUEST_GET;
+      writeRequest({ type: "get", objectId: "page", prop: String(prop) })
+      view[0] = REQUEST_GET
 
       // BLOCK HERE - worker pauses until main responds
-      Atomics.wait(view, 0, REQUEST_GET);
+      Atomics.wait(view, 0, REQUEST_GET)
 
-      return readResult();
+      return readResult()
     },
 
     apply(target, thisArg, args) {
@@ -686,60 +679,60 @@ const proxy = new Proxy(
         objectId: "page",
         method: "click",
         args: args[0],
-      });
-      view[0] = REQUEST_CALL;
+      })
+      view[0] = REQUEST_CALL
 
-      Atomics.wait(view, 0, REQUEST_CALL);
-      return readResult();
+      Atomics.wait(view, 0, REQUEST_CALL)
+      return readResult()
     },
   },
-);
+)
 
 // Main thread (needs dedicated thread - can't use Node.js event loop)
-import { Worker } from "node:worker_threads";
-import { spawn } from "node:child_process";
+import { Worker } from "node:worker_threads"
+import { spawn } from "node:child_process"
 
 // Option A: Use another Worker as monitor thread
-const monitorWorker = new Worker("./monitor.js");
+const monitorWorker = new Worker("./monitor.js")
 
 // Option B: Use separate Node.js process
-const monitorProcess = spawn("node", ["monitor.js"]);
+const monitorProcess = spawn("node", ["monitor.js"])
 
 // In monitor thread/process:
-const view = new Int32Array(sab, 0, 4);
-const buffer = new Uint8Array(sab, 4);
+const view = new Int32Array(sab, 0, 4)
+const buffer = new Uint8Array(sab, 4)
 
 function readRequest(): object {
-  const length = view[1];
-  const bytes = buffer.slice(0, length);
-  return JSON.parse(decoder.decode(bytes));
+  const length = view[1]
+  const bytes = buffer.slice(0, length)
+  return JSON.parse(decoder.decode(bytes))
 }
 
 function writeResult(data: unknown) {
-  const json = JSON.stringify(data);
-  const bytes = encoder.encode(json);
-  buffer.set(bytes);
-  view[2] = bytes.length;
+  const json = JSON.stringify(data)
+  const bytes = encoder.encode(json)
+  buffer.set(bytes)
+  view[2] = bytes.length
 }
 
 while (true) {
   // Wait for worker request
-  Atomics.wait(view, 0, IDLE, Infinity);
+  Atomics.wait(view, 0, IDLE, Infinity)
 
-  const request = readRequest();
+  const request = readRequest()
 
   if (request.type === "get") {
-    const obj = context[request.objectId];
-    const value = obj[request.prop];
-    writeResult(value);
+    const obj = context[request.objectId]
+    const value = obj[request.prop]
+    writeResult(value)
   } else if (request.type === "call") {
-    const obj = context[request.objectId];
-    const result = await obj[request.method](request.args);
-    writeResult(result);
+    const obj = context[request.objectId]
+    const result = await obj[request.method](request.args)
+    writeResult(result)
   }
 
-  view[0] = IDLE;
-  Atomics.notify(view, 0); // Wake worker
+  view[0] = IDLE
+  Atomics.notify(view, 0) // Wake worker
 }
 ```
 
@@ -851,25 +844,25 @@ while (true) {
 **Implementation:**
 
 ```ts
-import ivm from "isolated-vm";
+import ivm from "isolated-vm"
 
 const isolate = new ivm.Isolate({
   memoryLimit: 128, // 128MB
   onCatastrophicError: (err) => {
-    console.error("Isolate crashed:", err);
-    process.abort();
+    console.error("Isolate crashed:", err)
+    process.abort()
   },
-});
+})
 
-const context = await isolate.createContext();
+const context = await isolate.createContext()
 
 // Create references to host objects
-const pageRef = new ivm.Reference(pageObject);
-const browserRef = new ivm.Reference(browserObject);
+const pageRef = new ivm.Reference(pageObject)
+const browserRef = new ivm.Reference(browserObject)
 
 // Inject into isolate
-context.global.set("page", pageRef.derefInto(), { reference: true });
-context.global.set("browser", browserRef.derefInto(), { reference: true });
+context.global.set("page", pageRef.derefInto(), { reference: true })
+context.global.set("browser", browserRef.derefInto(), { reference: true })
 
 // Setup proxy helper in isolate
 const proxySetup = await isolate.compileScript(`
@@ -913,30 +906,30 @@ const proxySetup = await isolate.compileScript(`
     log: (...args) => __log('log', args.join(' ')),
     error: (...args) => __log('error', args.join(' '))
   }
-`);
-await proxySetup.run(context);
+`)
+await proxySetup.run(context)
 
 // Setup log bridge
 const logCallback = new ivm.Callback(
   (level, message) => {
-    logs.push(`[${level}] ${message}`);
+    logs.push(`[${level}] ${message}`)
   },
   { sync: true },
-);
-context.global.set("__log", logCallback);
+)
+context.global.set("__log", logCallback)
 
 // Execute user code
 const script = await isolate.compileScript(transpiledCode, {
   filename: "user-code.ts",
-});
+})
 
 const result = await script.run(context, {
   timeout: 5000, // 5 second timeout
   result: { copy: true }, // Copy result back
-});
+})
 
 // Cleanup
-isolate.dispose();
+isolate.dispose()
 ```
 
 **Reference API (synchronous operations):**
@@ -944,23 +937,23 @@ isolate.dispose();
 ```ts
 class Reference<T> {
   // Property access - SYNCHRONOUS!
-  getSync(prop): Reference<T[prop]>; // Returns reference to property
-  setSync(prop, value): void; // Sets property
-  deleteSync(prop): void; // Deletes property
+  getSync(prop): Reference<T[prop]> // Returns reference to property
+  setSync(prop, value): void // Sets property
+  deleteSync(prop): void // Deletes property
 
   // Value extraction - SYNCHRONOUS!
-  copySync(): T; // Copies value to current isolate
-  deref(): T; // Get actual value (if in owning isolate)
+  copySync(): T // Copies value to current isolate
+  deref(): T // Get actual value (if in owning isolate)
 
   // Method calls - SYNCHRONOUS!
-  applySync(receiver, args, options): Result;
+  applySync(receiver, args, options): Result
 
   // Async variants also available
-  get(prop): Promise<Reference>;
-  apply(receiver, args, options): Promise<Result>;
+  get(prop): Promise<Reference>
+  apply(receiver, args, options): Promise<Result>
 
   // Special: Call from isolate into host with async support
-  applySyncPromise(receiver, args, options): Result;
+  applySyncPromise(receiver, args, options): Result
   // Only works when calling FROM isolate INTO host
   // Allows isolate to await host's async operations
 }
@@ -992,24 +985,24 @@ const handlerCallback = new ivm.Callback(
     // But route/request are sandbox objects...
 
     // Can use applySyncPromise for async
-    return route.applySync("fulfill", [{ body: "blocked" }]);
+    return route.applySync("fulfill", [{ body: "blocked" }])
   },
   { sync: true },
-);
+)
 
 // Pass to sandbox
-context.global.set("handler", handlerCallback.derefInto());
+context.global.set("handler", handlerCallback.derefInto())
 
 // In sandbox:
-page.route("**", handler); // handler is callback
+page.route("**", handler) // handler is callback
 ```
 
 **But closures don't work:**
 
 ```ts
 // In sandbox:
-const config = { timeout: 5000 };
-const fn = new ivm.Callback(() => config.timeout);
+const config = { timeout: 5000 }
+const fn = new ivm.Callback(() => config.timeout)
 
 // Problem: config is in sandbox, callback runs in host
 // Host can't access sandbox closure
@@ -1024,15 +1017,13 @@ const fn = new ivm.Callback(() => config.timeout);
 // In host:
 const readFileCallback = new ivm.Callback(
   async (path) => {
-    return await fs.readFile(path, "utf-8");
+    return await fs.readFile(path, "utf-8")
   },
   { async: true },
-);
+)
 
 // In sandbox:
-const content = await readFileCallback.applySyncPromise(undefined, [
-  "file.txt",
-]);
+const content = await readFileCallback.applySyncPromise(undefined, ["file.txt"])
 // Isolate waits for host's async operation
 ```
 
@@ -1041,8 +1032,8 @@ const content = await readFileCallback.applySyncPromise(undefined, [
 1. **Closures:** Functions passed to host lose closure context
 
    ```ts
-   const localVar = 123;
-   page.evaluate(() => localVar); // localVar not accessible in host
+   const localVar = 123
+   page.evaluate(() => localVar) // localVar not accessible in host
    ```
 
 2. **Bidirectional object passing:**
@@ -1057,8 +1048,8 @@ const content = await readFileCallback.applySyncPromise(undefined, [
      // response comes from Playwright (host)
      // handler runs in sandbox
      // response is Reference in sandbox
-     response.status(); // Need: responseRef.getSync('status').applySync()
-   });
+     response.status() // Need: responseRef.getSync('status').applySync()
+   })
    ```
 
 4. **Native C++ binding:**
@@ -1200,55 +1191,51 @@ The Runner plugin system follows Rollup's proven pattern:
 // src/lib/types.ts
 
 export interface RunInput {
-  source: string;
-  context: Record<string, unknown>;
-  [key: string]: unknown;
+  source: string
+  context: Record<string, unknown>
+  [key: string]: unknown
 }
 
 export interface RunOutput {
-  result: unknown;
-  error: unknown;
-  logs?: string[];
-  [key: string]: unknown;
+  result: unknown
+  error: unknown
+  logs?: string[]
+  [key: string]: unknown
 }
 
 export interface TransformResult {
-  code: string;
-  sourceMap?: string; // Optional source map
+  code: string
+  sourceMap?: string // Optional source map
 }
 
 // Executor handles execution (first plugin wins)
 export interface Executor {
-  name: string;
-  execute(code: string, context: Record<string, unknown>): Promise<RunOutput>;
-  teardown?: () => Promise<void>;
+  name: string
+  execute(code: string, context: Record<string, unknown>): Promise<RunOutput>
+  teardown?: () => Promise<void>
 }
 
 // Handles calls from sandbox to real objects (for proxy-based runtimes)
 export interface ContextInvoker {
-  invoke(input: {
-    objectId: string;
-    method: string;
-    args: unknown;
-  }): Promise<unknown>;
+  invoke(input: { objectId: string; method: string; args: unknown }): Promise<unknown>
 }
 
 // Plugin hooks - transform is sequential, executor is first
 export interface Hooks {
   // Transform hook: sequential, all plugins run
   // Return { code, sourceMap } to transform, null to skip
-  transform?: (code: string) => Promise<TransformResult | null>;
+  transform?: (code: string) => Promise<TransformResult | null>
 
   // Executor: first plugin wins, rest ignored
-  executor?: Executor;
+  executor?: Executor
 
   // Existing hooks (sequential)
-  teardown?: () => Promise<void>;
-  beforeRun?: (input: RunInput) => Promise<Partial<RunInput> | void>;
-  afterRun?: (output: RunOutput) => Promise<Partial<RunOutput> | void>;
+  teardown?: () => Promise<void>
+  beforeRun?: (input: RunInput) => Promise<Partial<RunInput> | void>
+  afterRun?: (output: RunOutput) => Promise<Partial<RunOutput> | void>
 }
 
-export type Plugin = () => Promise<Hooks>;
+export type Plugin = () => Promise<Hooks>
 ```
 
 ### Runner Implementation
@@ -1256,152 +1243,128 @@ export type Plugin = () => Promise<Hooks>;
 ```ts
 // src/lib/runner.ts
 
-import { Effect, Layer, Schema, ServiceMap } from "effect";
-import type {
-  Hooks,
-  Plugin,
-  RunInput,
-  RunOutput,
-  TransformResult,
-} from "./types.ts";
+import { Effect, Layer, Schema, ServiceMap } from "effect"
+import type { Hooks, Plugin, RunInput, RunOutput, TransformResult } from "./types.ts"
 
-export class HookError extends Schema.TaggedErrorClass<HookError>()(
-  "HookError",
-  {
-    hook: Schema.String,
-    cause: Schema.Defect,
-  },
-) {}
+export class HookError extends Schema.TaggedErrorClass<HookError>()("HookError", {
+  hook: Schema.String,
+  cause: Schema.Defect,
+}) {}
 
-export class TransformError extends Schema.TaggedErrorClass<TransformError>()(
-  "TransformError",
-  {
-    cause: Schema.Defect,
-  },
-) {}
+export class TransformError extends Schema.TaggedErrorClass<TransformError>()("TransformError", {
+  cause: Schema.Defect,
+}) {}
 
-export class ExecutionError extends Schema.TaggedErrorClass<ExecutionError>()(
-  "ExecutionError",
-  {
-    cause: Schema.Defect,
-  },
-) {}
+export class ExecutionError extends Schema.TaggedErrorClass<ExecutionError>()("ExecutionError", {
+  cause: Schema.Defect,
+}) {}
 
 // Default executor (new Function for backwards compat)
 const defaultExecutor: Executor = {
   name: "new-function",
   execute: async (code, context) => {
-    const params = Object.keys(context);
-    const values = Object.values(context);
+    const params = Object.keys(context)
+    const values = Object.values(context)
     // oxlint-disable-next-line typescript/no-implied-eval
-    const fn = new Function(
-      ...params,
-      `"use strict"; return (async () => {\n${code}\n})();`,
-    );
-    const result = await fn(...values);
-    return { result, error: undefined };
+    const fn = new Function(...params, `"use strict"; return (async () => {\n${code}\n})();`)
+    const result = await fn(...values)
+    return { result, error: undefined }
   },
-};
+}
 
-export class Runner extends ServiceMap.Service<Runner>()(
-  "@ericc-ch/runner/Runner",
-  {
-    make: Effect.sync(() => {
-      let hooks: Hooks[] = [];
-      let executor: Executor = defaultExecutor;
+export class Runner extends ServiceMap.Service<Runner>()("@ericc-ch/runner/Runner", {
+  make: Effect.sync(() => {
+    let hooks: Hooks[] = []
+    let executor: Executor = defaultExecutor
 
-      const init = Effect.fn(function* (plugins: Plugin[]) {
-        hooks = yield* Effect.forEach(plugins, (plugin) =>
-          Effect.promise(plugin),
-        );
+    const init = Effect.fn(function* (plugins: Plugin[]) {
+      hooks = yield* Effect.forEach(plugins, (plugin) => Effect.promise(plugin))
 
-        // Executor: first plugin wins
-        const executorHook = hooks.find((h) => h.executor);
-        if (executorHook?.executor) {
-          executor = executorHook.executor;
+      // Executor: first plugin wins
+      const executorHook = hooks.find((h) => h.executor)
+      if (executorHook?.executor) {
+        executor = executorHook.executor
+      }
+    })
+
+    const execute = Effect.fn(function* (source: string) {
+      const currentState: RunInput = { source, context: {} }
+
+      // beforeRun hooks (sequential)
+      for (const hook of hooks) {
+        if (!hook.beforeRun) continue
+        const result = yield* Effect.tryPromise({
+          try: () => hook.beforeRun(currentState),
+          catch: (cause) => new HookError({ hook: "beforeRun", cause }),
+        })
+        if (result?.context) Object.assign(currentState.context, result.context)
+      }
+
+      // Transform hooks (sequential, all plugins run)
+      let code = source
+      for (const hook of hooks) {
+        if (!hook.transform) continue
+
+        const result = yield* Effect.tryPromise({
+          try: () => hook.transform(code),
+          catch: (cause) => new TransformError({ cause }),
+        })
+
+        // null means skip this plugin
+        if (result !== null) {
+          code = result.code
         }
-      });
+      }
 
-      const execute = Effect.fn(function* (source: string) {
-        const currentState: RunInput = { source, context: {} };
+      // Execute with executor
+      const output: RunOutput = yield* Effect.tryPromise({
+        try: () => executor.execute(code, currentState.context),
+        catch: (cause) => new ExecutionError({ cause }),
+      })
 
-        // beforeRun hooks (sequential)
-        for (const hook of hooks) {
-          if (!hook.beforeRun) continue;
-          const result = yield* Effect.tryPromise({
-            try: () => hook.beforeRun(currentState),
-            catch: (cause) => new HookError({ hook: "beforeRun", cause }),
-          });
-          if (result?.context)
-            Object.assign(currentState.context, result.context);
-        }
+      // afterRun hooks (sequential)
+      for (const hook of hooks) {
+        if (!hook.afterRun) continue
+        const result = yield* Effect.tryPromise({
+          try: () => hook.afterRun(output),
+          catch: (cause) => new HookError({ hook: "afterRun", cause }),
+        })
+        if (result) Object.assign(output, result)
+      }
 
-        // Transform hooks (sequential, all plugins run)
-        let code = source;
-        for (const hook of hooks) {
-          if (!hook.transform) continue;
+      return output
+    })
 
-          const result = yield* Effect.tryPromise({
-            try: () => hook.transform(code),
-            catch: (cause) => new TransformError({ cause }),
-          });
+    const teardown = Effect.gen(function* () {
+      // Plugin teardown hooks
+      yield* Effect.forEach(
+        hooks,
+        (hook) =>
+          hook.teardown
+            ? Effect.tryPromise({
+                try: () => hook.teardown(),
+                catch: (cause) => new HookError({ hook: "teardown", cause }),
+              })
+            : Effect.succeed(undefined),
+        { discard: true },
+      )
 
-          // null means skip this plugin
-          if (result !== null) {
-            code = result.code;
-          }
-        }
-
-        // Execute with executor
-        const output: RunOutput = yield* Effect.tryPromise({
-          try: () => executor.execute(code, currentState.context),
+      // Executor teardown
+      if (executor.teardown) {
+        yield* Effect.tryPromise({
+          try: () => executor.teardown(),
           catch: (cause) => new ExecutionError({ cause }),
-        });
+        })
+      }
 
-        // afterRun hooks (sequential)
-        for (const hook of hooks) {
-          if (!hook.afterRun) continue;
-          const result = yield* Effect.tryPromise({
-            try: () => hook.afterRun(output),
-            catch: (cause) => new HookError({ hook: "afterRun", cause }),
-          });
-          if (result) Object.assign(output, result);
-        }
+      hooks = []
+      executor = defaultExecutor
+    })
 
-        return output;
-      });
-
-      const teardown = Effect.gen(function* () {
-        // Plugin teardown hooks
-        yield* Effect.forEach(
-          hooks,
-          (hook) =>
-            hook.teardown
-              ? Effect.tryPromise({
-                  try: () => hook.teardown(),
-                  catch: (cause) => new HookError({ hook: "teardown", cause }),
-                })
-              : Effect.succeed(undefined),
-          { discard: true },
-        );
-
-        // Executor teardown
-        if (executor.teardown) {
-          yield* Effect.tryPromise({
-            try: () => executor.teardown(),
-            catch: (cause) => new ExecutionError({ cause }),
-          });
-        }
-
-        hooks = [];
-        executor = defaultExecutor;
-      });
-
-      return { init, execute, teardown };
-    }),
-  },
-) {
-  static readonly layer = Layer.effect(Runner, Runner.make);
+    return { init, execute, teardown }
+  }),
+}) {
+  static readonly layer = Layer.effect(Runner, Runner.make)
 }
 ```
 
@@ -1413,52 +1376,52 @@ export class Runner extends ServiceMap.Service<Runner>()(
 
 ```ts
 // .runner/plugins/transform-amaro.ts
-import amaro from "amaro";
-import type { Plugin, TransformResult } from "../../src/lib/types.ts";
+import amaro from "amaro"
+import type { Plugin, TransformResult } from "../../src/lib/types.ts"
 
 export default (): Plugin => async () => ({
   transform: async (code): Promise<TransformResult> => {
     const { code: stripped } = amaro.transformSync(code, {
       mode: "strip-only",
-    });
-    return { code: stripped };
+    })
+    return { code: stripped }
   },
-});
+})
 ```
 
 **esbuild (fallback for complex TS):**
 
 ```ts
 // .runner/plugins/transform-esbuild.ts
-import * as esbuild from "esbuild";
-import type { Plugin, TransformResult } from "../../src/lib/types.ts";
+import * as esbuild from "esbuild"
+import type { Plugin, TransformResult } from "../../src/lib/types.ts"
 
 // Check if code has type annotations
 const hasTypeSyntax = (code: string): boolean =>
   /:\s*(string|number|boolean|any|void|never|unknown|object)\b/.test(code) ||
-  /<[A-Z]\w*>/.test(code);
+  /<[A-Z]\w*>/.test(code)
 
 export default (): Plugin => async () => ({
   transform: async (code): Promise<TransformResult | null> => {
     // Skip if no type syntax (already valid JS)
-    if (!hasTypeSyntax(code)) return null;
+    if (!hasTypeSyntax(code)) return null
 
     const result = await esbuild.transform(code, {
       loader: "ts",
       sourcemap: "inline",
-    });
-    return { code: result.code, sourceMap: result.map };
+    })
+    return { code: result.code, sourceMap: result.map }
   },
-});
+})
 ```
 
 **Combined: amaro + esbuild fallback:**
 
 ```ts
 // .runner/config.ts - Both plugins active
-import amaroPlugin from "./plugins/transform-amaro.ts";
-import esbuildPlugin from "./plugins/transform-esbuild.ts";
-import playwrightPlugin from "./plugins/playwright.ts";
+import amaroPlugin from "./plugins/transform-amaro.ts"
+import esbuildPlugin from "./plugins/transform-esbuild.ts"
+import playwrightPlugin from "./plugins/playwright.ts"
 
 export default defineConfig({
   plugins: [
@@ -1466,7 +1429,7 @@ export default defineConfig({
     esbuildPlugin(), // Fallback for complex syntax
     playwrightPlugin(),
   ],
-});
+})
 ```
 
 Execution flow:
@@ -1481,45 +1444,45 @@ Execution flow:
 
 ```ts
 // .runner/plugins/executor-quickjs.ts
-import { getQuickJS } from "quickjs-emscripten";
-import type { Plugin, Executor, RunOutput } from "../../src/lib/types.ts";
+import { getQuickJS } from "quickjs-emscripten"
+import type { Plugin, Executor, RunOutput } from "../../src/lib/types.ts"
 
 export default (): Plugin => async () => ({
   executor: {
     name: "quickjs",
     execute: async (code, context): Promise<RunOutput> => {
-      const QuickJS = await getQuickJS();
-      const runtime = QuickJS.newRuntime();
+      const QuickJS = await getQuickJS()
+      const runtime = QuickJS.newRuntime()
 
       // Configure limits
-      runtime.setMemoryLimit(128 * 1024 * 1024); // 128MB
-      runtime.setMaxStackSize(4 * 1024 * 1024); // 4MB
+      runtime.setMemoryLimit(128 * 1024 * 1024) // 128MB
+      runtime.setMaxStackSize(4 * 1024 * 1024) // 4MB
 
-      const vm = runtime.newContext();
-      const logs: string[] = [];
+      const vm = runtime.newContext()
+      const logs: string[] = []
 
       // Inject context as proxies (for isolated runtime)
       // ... proxy setup code ...
 
-      const result = vm.evalCode(code);
+      const result = vm.evalCode(code)
 
       // Handle result, errors, cleanup
-      return { result, error: undefined, logs };
+      return { result, error: undefined, logs }
     },
 
     teardown: async () => {
       // Cleanup QuickJS runtime
     },
   },
-});
+})
 ```
 
 **node:vm Executor:**
 
 ```ts
 // .runner/plugins/executor-vm.ts
-import vm from "node:vm";
-import type { Plugin, Executor, RunOutput } from "../../src/lib/types.ts";
+import vm from "node:vm"
+import type { Plugin, Executor, RunOutput } from "../../src/lib/types.ts"
 
 export default (): Plugin => async () => ({
   executor: {
@@ -1530,58 +1493,58 @@ export default (): Plugin => async () => ({
         ...context,
         console: { log: (...args) => logs.push(args.join(" ")) },
         // No process, require, global
-      });
+      })
 
-      const ctx = vm.createContext(sandbox);
-      const script = new vm.Script(code);
+      const ctx = vm.createContext(sandbox)
+      const script = new vm.Script(code)
 
       try {
-        const result = await script.runInContext(ctx, { timeout: 5000 });
-        return { result, error: undefined };
+        const result = await script.runInContext(ctx, { timeout: 5000 })
+        return { result, error: undefined }
       } catch (err) {
-        return { result: undefined, error: err.message };
+        return { result: undefined, error: err.message }
       }
     },
   },
-});
+})
 ```
 
 **isolated-vm Executor:**
 
 ```ts
 // .runner/plugins/executor-isolated-vm.ts
-import ivm from "isolated-vm";
-import type { Plugin, Executor, RunOutput } from "../../src/lib/types.ts";
+import ivm from "isolated-vm"
+import type { Plugin, Executor, RunOutput } from "../../src/lib/types.ts"
 
 export default (): Plugin => async () => ({
   executor: {
     name: "isolated-vm",
     execute: async (code, context): Promise<RunOutput> => {
-      const isolate = new ivm.Isolate({ memoryLimit: 128 });
-      const ctx = await isolate.createContext();
+      const isolate = new ivm.Isolate({ memoryLimit: 128 })
+      const ctx = await isolate.createContext()
 
       // Inject context as References
       for (const [key, value] of Object.entries(context)) {
-        const ref = new ivm.Reference(value);
-        ctx.global.set(key, ref.derefInto(), { reference: true });
+        const ref = new ivm.Reference(value)
+        ctx.global.set(key, ref.derefInto(), { reference: true })
       }
 
-      const script = await isolate.compileScript(code);
+      const script = await isolate.compileScript(code)
 
       try {
         const result = await script.run(ctx, {
           timeout: 5000,
           result: { copy: true },
-        });
-        return { result, error: undefined };
+        })
+        return { result, error: undefined }
       } catch (err) {
-        return { result: undefined, error: err.message };
+        return { result: undefined, error: err.message }
       } finally {
-        isolate.dispose();
+        isolate.dispose()
       }
     },
   },
-});
+})
 ```
 
 #### Plugin Composition
@@ -1590,9 +1553,9 @@ export default (): Plugin => async () => ({
 
 ```ts
 // .runner/config.ts
-import amaroPlugin from "./plugins/transform-amaro.ts";
-import executorVM from "./plugins/executor-vm.ts";
-import playwrightPlugin from "./plugins/playwright.ts";
+import amaroPlugin from "./plugins/transform-amaro.ts"
+import executorVM from "./plugins/executor-vm.ts"
+import playwrightPlugin from "./plugins/playwright.ts"
 
 export default defineConfig({
   plugins: [
@@ -1600,7 +1563,7 @@ export default defineConfig({
     executorVM(), // Executor: node:vm with timeout
     playwrightPlugin(), // Context: browser, page
   ],
-});
+})
 ```
 
 Execution:
@@ -1841,15 +1804,15 @@ Functions │ Simplicity
 
 ```ts
 // .runner/config.ts
-import amaroPlugin from "./plugins/transform-amaro.ts";
-import playwrightPlugin from "./plugins/playwright.ts";
+import amaroPlugin from "./plugins/transform-amaro.ts"
+import playwrightPlugin from "./plugins/playwright.ts"
 
 export default defineConfig({
   plugins: [
     amaroPlugin(), // Transform: strip types
     playwrightPlugin(), // Context: browser, page
   ],
-});
+})
 ```
 
 - Full Playwright compatibility
@@ -1861,9 +1824,9 @@ export default defineConfig({
 
 ```ts
 // .runner/config.ts (secure mode)
-import amaroPlugin from "./plugins/transform-amaro.ts";
-import executorVM from "./plugins/executor-vm.ts";
-import httpPlugin from "./plugins/http.ts";
+import amaroPlugin from "./plugins/transform-amaro.ts"
+import executorVM from "./plugins/executor-vm.ts"
+import httpPlugin from "./plugins/http.ts"
 
 export default defineConfig({
   plugins: [
@@ -1871,7 +1834,7 @@ export default defineConfig({
     executorVM(), // Executor: timeout + mild isolation
     httpPlugin(), // Context: httpClient
   ],
-});
+})
 ```
 
 - HTTP clients, database operations: use `isolated-vm` executor
