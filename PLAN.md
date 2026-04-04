@@ -1175,6 +1175,25 @@ const content = await readFileCallback.applySyncPromise(undefined, [
 
 ## Proposed Architecture for Runner
 
+### Plugin System Design (Inspired by Rollup/Vite)
+
+The Runner plugin system follows Rollup's proven pattern:
+
+**Key concepts:**
+
+1. **Hooks are sequential** - All plugins implementing a hook run in order
+2. **Transform returns result or null** - `null` means skip this plugin, pass to next
+3. **Executor is separate** - Only one executor (first wins), transforms chain
+
+**Hook execution modes:**
+
+| Hook        | Mode       | Description                            |
+| ----------- | ---------- | -------------------------------------- |
+| `transform` | sequential | All plugins run, result passes to next |
+| `executor`  | first      | First plugin wins, rest ignored        |
+| `beforeRun` | sequential | All plugins run, merge results         |
+| `afterRun`  | sequential | All plugins run, merge results         |
+
 ### Core Interfaces
 
 ```ts
@@ -1182,7 +1201,6 @@ const content = await readFileCallback.applySyncPromise(undefined, [
 
 export interface RunInput {
   source: string;
-  language: "typescript" | "javascript";
   context: Record<string, unknown>;
   [key: string]: unknown;
 }
@@ -1194,24 +1212,19 @@ export interface RunOutput {
   [key: string]: unknown;
 }
 
-// Runtime abstraction
-export interface Runtime {
+export interface TransformResult {
+  code: string;
+  sourceMap?: string; // Optional source map
+}
+
+// Executor handles execution (first plugin wins)
+export interface Executor {
   name: string;
-
-  // Transform TS → JS (optional, some runtimes handle this)
-  transform?: (source: string) => Promise<string>;
-
-  // Execute code with proxied context
-  execute(
-    source: string,
-    context: Record<string, unknown>,
-    invoker: ContextInvoker,
-  ): Promise<RunOutput>;
-
+  execute(code: string, context: Record<string, unknown>): Promise<RunOutput>;
   teardown?: () => Promise<void>;
 }
 
-// Handles calls from sandbox to real objects
+// Handles calls from sandbox to real objects (for proxy-based runtimes)
 export interface ContextInvoker {
   invoke(input: {
     objectId: string;
@@ -1220,12 +1233,16 @@ export interface ContextInvoker {
   }): Promise<unknown>;
 }
 
-// Plugin provides runtime + hooks
+// Plugin hooks - transform is sequential, executor is first
 export interface Hooks {
-  // Runtime to use (first plugin wins, or default)
-  runtime?: Runtime;
+  // Transform hook: sequential, all plugins run
+  // Return { code, sourceMap } to transform, null to skip
+  transform?: (code: string) => Promise<TransformResult | null>;
 
-  // Existing hooks
+  // Executor: first plugin wins, rest ignored
+  executor?: Executor;
+
+  // Existing hooks (sequential)
   teardown?: () => Promise<void>;
   beforeRun?: (input: RunInput) => Promise<Partial<RunInput> | void>;
   afterRun?: (output: RunOutput) => Promise<Partial<RunOutput> | void>;
@@ -1239,31 +1256,78 @@ export type Plugin = () => Promise<Hooks>;
 ```ts
 // src/lib/runner.ts
 
+import { Effect, Layer, Schema, ServiceMap } from "effect";
+import type {
+  Hooks,
+  Plugin,
+  RunInput,
+  RunOutput,
+  TransformResult,
+} from "./types.ts";
+
+export class HookError extends Schema.TaggedErrorClass<HookError>()(
+  "HookError",
+  {
+    hook: Schema.String,
+    cause: Schema.Defect,
+  },
+) {}
+
+export class TransformError extends Schema.TaggedErrorClass<TransformError>()(
+  "TransformError",
+  {
+    cause: Schema.Defect,
+  },
+) {}
+
+export class ExecutionError extends Schema.TaggedErrorClass<ExecutionError>()(
+  "ExecutionError",
+  {
+    cause: Schema.Defect,
+  },
+) {}
+
+// Default executor (new Function for backwards compat)
+const defaultExecutor: Executor = {
+  name: "new-function",
+  execute: async (code, context) => {
+    const params = Object.keys(context);
+    const values = Object.values(context);
+    // oxlint-disable-next-line typescript/no-implied-eval
+    const fn = new Function(
+      ...params,
+      `"use strict"; return (async () => {\n${code}\n})();`,
+    );
+    const result = await fn(...values);
+    return { result, error: undefined };
+  },
+};
+
 export class Runner extends ServiceMap.Service<Runner>()(
   "@ericc-ch/runner/Runner",
   {
     make: Effect.sync(() => {
-      let hooks: RequiredHooks[] = [];
-      let runtime: Runtime | null = null;
+      let hooks: Hooks[] = [];
+      let executor: Executor = defaultExecutor;
 
-      const init = Effect.fn(function* (plugins: RequiredPlugin[]) {
+      const init = Effect.fn(function* (plugins: Plugin[]) {
         hooks = yield* Effect.forEach(plugins, (plugin) =>
           Effect.promise(plugin),
         );
 
-        // Find runtime from plugins (first wins)
-        runtime = hooks.find((h) => h.runtime)?.runtime ?? defaultRuntime;
+        // Executor: first plugin wins
+        const executorHook = hooks.find((h) => h.executor);
+        if (executorHook?.executor) {
+          executor = executorHook.executor;
+        }
       });
 
       const execute = Effect.fn(function* (source: string) {
-        const currentState: RunInput = {
-          source,
-          language: "typescript",
-          context: {},
-        };
+        const currentState: RunInput = { source, context: {} };
 
-        // beforeRun hooks populate context
+        // beforeRun hooks (sequential)
         for (const hook of hooks) {
+          if (!hook.beforeRun) continue;
           const result = yield* Effect.tryPromise({
             try: () => hook.beforeRun(currentState),
             catch: (cause) => new HookError({ hook: "beforeRun", cause }),
@@ -1272,64 +1336,65 @@ export class Runner extends ServiceMap.Service<Runner>()(
             Object.assign(currentState.context, result.context);
         }
 
-        // Create invoker that routes calls to real objects
-        const invoker: ContextInvoker = {
-          invoke: async ({ objectId, method, args }) => {
-            const obj = currentState.context[objectId];
-            if (!obj)
-              throw new Error(`Object '${objectId}' not found in context`);
-            if (!(method in obj))
-              throw new Error(`Method '${method}' not found on '${objectId}'`);
+        // Transform hooks (sequential, all plugins run)
+        let code = source;
+        for (const hook of hooks) {
+          if (!hook.transform) continue;
 
-            // Actual call happens here in host process
-            return await obj[method](args);
-          },
-        };
+          const result = yield* Effect.tryPromise({
+            try: () => hook.transform(code),
+            catch: (cause) => new TransformError({ cause }),
+          });
 
-        // Transform if runtime needs it
-        let transformedSource = currentState.source;
-        if (runtime!.transform) {
-          transformedSource = await runtime!.transform(transformedSource);
+          // null means skip this plugin
+          if (result !== null) {
+            code = result.code;
+          }
         }
 
-        // Execute in runtime
-        const output = yield* Effect.tryPromise({
-          try: () =>
-            runtime!.execute(transformedSource, currentState.context, invoker),
+        // Execute with executor
+        const output: RunOutput = yield* Effect.tryPromise({
+          try: () => executor.execute(code, currentState.context),
           catch: (cause) => new ExecutionError({ cause }),
         });
 
-        // afterRun hooks
+        // afterRun hooks (sequential)
         for (const hook of hooks) {
-          yield* Effect.tryPromise({
+          if (!hook.afterRun) continue;
+          const result = yield* Effect.tryPromise({
             try: () => hook.afterRun(output),
             catch: (cause) => new HookError({ hook: "afterRun", cause }),
           });
+          if (result) Object.assign(output, result);
         }
 
         return output;
       });
 
       const teardown = Effect.gen(function* () {
+        // Plugin teardown hooks
         yield* Effect.forEach(
           hooks,
           (hook) =>
-            Effect.tryPromise({
-              try: () => hook.teardown(),
-              catch: (cause) => new HookError({ hook: "teardown", cause }),
-            }),
+            hook.teardown
+              ? Effect.tryPromise({
+                  try: () => hook.teardown(),
+                  catch: (cause) => new HookError({ hook: "teardown", cause }),
+                })
+              : Effect.succeed(undefined),
           { discard: true },
         );
 
-        if (runtime?.teardown) {
+        // Executor teardown
+        if (executor.teardown) {
           yield* Effect.tryPromise({
-            try: () => runtime.teardown(),
+            try: () => executor.teardown(),
             catch: (cause) => new ExecutionError({ cause }),
           });
         }
 
         hooks = [];
-        runtime = null;
+        executor = defaultExecutor;
       });
 
       return { init, execute, teardown };
@@ -1338,127 +1403,107 @@ export class Runner extends ServiceMap.Service<Runner>()(
 ) {
   static readonly layer = Layer.effect(Runner, Runner.make);
 }
-
-// Default runtime (new Function for backwards compat)
-const defaultRuntime: Runtime = {
-  name: "new-function",
-  transform: async (source) => {
-    const esbuild = await import("esbuild");
-    const result = await esbuild.transform(source, { loader: "ts" });
-    return result.code;
-  },
-  execute: async (source, context, invoker) => {
-    // Direct execution (no isolation) - same as current
-    const params = Object.keys(context);
-    const values = Object.values(context);
-    const fn = new Function(...params, source);
-    const result = await fn(...values);
-    return { result, error: undefined };
-  },
-};
 ```
 
-### Runtime Plugin Examples
+### Plugin Examples
 
-#### QuickJS Runtime Plugin
+#### Transform Plugins
+
+**Amaro (Node.js type stripper):**
 
 ```ts
-// .runner/plugins/runtime-quickjs.ts
+// .runner/plugins/transform-amaro.ts
+import amaro from "amaro";
+import type { Plugin, TransformResult } from "../../src/lib/types.ts";
 
-import {
-  getQuickJS,
-  type QuickJSContext,
-  type QuickJSHandle,
-} from "quickjs-emscripten";
-import type { Runtime, ContextInvoker } from "../../src/lib/types.ts";
+export default (): Plugin => async () => ({
+  transform: async (code): Promise<TransformResult> => {
+    const { code: stripped } = amaro.transformSync(code, {
+      mode: "strip-only",
+    });
+    return { code: stripped };
+  },
+});
+```
 
-export const quickjsRuntimePlugin = (): Plugin => async () => ({
-  runtime: {
+**esbuild (fallback for complex TS):**
+
+```ts
+// .runner/plugins/transform-esbuild.ts
+import * as esbuild from "esbuild";
+import type { Plugin, TransformResult } from "../../src/lib/types.ts";
+
+// Check if code has type annotations
+const hasTypeSyntax = (code: string): boolean =>
+  /:\s*(string|number|boolean|any|void|never|unknown|object)\b/.test(code) ||
+  /<[A-Z]\w*>/.test(code);
+
+export default (): Plugin => async () => ({
+  transform: async (code): Promise<TransformResult | null> => {
+    // Skip if no type syntax (already valid JS)
+    if (!hasTypeSyntax(code)) return null;
+
+    const result = await esbuild.transform(code, {
+      loader: "ts",
+      sourcemap: "inline",
+    });
+    return { code: result.code, sourceMap: result.map };
+  },
+});
+```
+
+**Combined: amaro + esbuild fallback:**
+
+```ts
+// .runner/config.ts - Both plugins active
+import amaroPlugin from "./plugins/transform-amaro.ts";
+import esbuildPlugin from "./plugins/transform-esbuild.ts";
+import playwrightPlugin from "./plugins/playwright.ts";
+
+export default defineConfig({
+  plugins: [
+    amaroPlugin(), // Fast type stripping
+    esbuildPlugin(), // Fallback for complex syntax
+    playwrightPlugin(),
+  ],
+});
+```
+
+Execution flow:
+
+1. `amaroPlugin.transform(code)` → stripped code
+2. `esbuildPlugin.transform(code)` → returns `null` (no types left after amaro)
+3. Final code passed to executor
+
+#### Executor Plugins
+
+**QuickJS Executor:**
+
+```ts
+// .runner/plugins/executor-quickjs.ts
+import { getQuickJS } from "quickjs-emscripten";
+import type { Plugin, Executor, RunOutput } from "../../src/lib/types.ts";
+
+export default (): Plugin => async () => ({
+  executor: {
     name: "quickjs",
-    transform: async (source) => {
-      const esbuild = await import("esbuild");
-      return esbuild.transform(source, { loader: "ts" }).code;
-    },
-
-    execute: async (source, context, invoker) => {
+    execute: async (code, context): Promise<RunOutput> => {
       const QuickJS = await getQuickJS();
       const runtime = QuickJS.newRuntime();
 
       // Configure limits
       runtime.setMemoryLimit(128 * 1024 * 1024); // 128MB
       runtime.setMaxStackSize(4 * 1024 * 1024); // 4MB
-      runtime.setInterruptHandler(() => Date.now() > deadline);
 
       const vm = runtime.newContext();
       const logs: string[] = [];
 
-      // Create proxy generator
-      const proxyCode = `
-        const __makeProxy = (path = []) => new Proxy(() => {}, {
-          get(_, prop) {
-            if (prop === 'then') return undefined
-            return __makeProxy([...path, prop])
-          },
-          apply(_, __, args) {
-            const objectId = path[0]
-            const method = path.slice(1).join('.')
-            return Promise.resolve(__call(objectId, method, args[0]))
-              .then(r => r ? JSON.parse(r) : undefined)
-          }
-        })
-        
-        // Inject proxies for each context key
-        ${Object.keys(context)
-          .map((k) => `const ${k} = __makeProxy(['${k}'])`)
-          .join("\n")}
-        
-        // Console
-        const console = {
-          log: (...a) => __log('log', a.join(' ')),
-          error: (...a) => __log('error', a.join(' ')),
-        }
-      `;
+      // Inject context as proxies (for isolated runtime)
+      // ... proxy setup code ...
 
-      // Create call bridge
-      const callBridge = vm.newFunction(
-        "__call",
-        (objHandle, methodHandle, argsHandle) => {
-          const objectId = vm.getString(objHandle);
-          const method = vm.getString(methodHandle);
-          const args = vm.dump(argsHandle);
+      const result = vm.evalCode(code);
 
-          const deferred = vm.newPromise();
-
-          invoker
-            .invoke({ objectId, method, args })
-            .then((value) => {
-              const json = JSON.stringify(value);
-              deferred.resolve(vm.newString(json));
-            })
-            .catch((err) => {
-              deferred.reject(vm.newError(err.message));
-            });
-
-          return deferred.handle;
-        },
-      );
-      vm.setProp(vm.global, "__call", callBridge);
-      callBridge.dispose();
-
-      // Create log bridge
-      const logBridge = vm.newFunction("__log", (levelHandle, msgHandle) => {
-        logs.push(`[${vm.getString(levelHandle)}] ${vm.getString(msgHandle)}`);
-        return vm.undefined;
-      });
-      vm.setProp(vm.global, "__log", logBridge);
-      logBridge.dispose();
-
-      // Execute
-      const fullCode = proxyCode + "\n" + source;
-      const result = vm.evalCode(fullCode);
-
-      // ... handle result, errors, cleanup
-
+      // Handle result, errors, cleanup
       return { result, error: undefined, logs };
     },
 
@@ -1469,169 +1514,137 @@ export const quickjsRuntimePlugin = (): Plugin => async () => ({
 });
 ```
 
-#### Worker Thread Runtime Plugin
+**node:vm Executor:**
 
 ```ts
-// .runner/plugins/runtime-worker.ts
+// .runner/plugins/executor-vm.ts
+import vm from "node:vm";
+import type { Plugin, Executor, RunOutput } from "../../src/lib/types.ts";
 
-import { Worker } from "node:worker_threads";
-import type { Runtime, ContextInvoker } from "../../src/lib/types.ts";
-
-export const workerRuntimePlugin = (): Plugin => async () => {
-  let worker: Worker;
-
-  return {
-    runtime: {
-      name: "worker-thread",
-      transform: async (source) => {
-        const esbuild = await import("esbuild");
-        return esbuild.transform(source, { loader: "ts" }).code;
-      },
-
-      execute: async (source, context, invoker) => {
-        // Send code to worker
-        worker.postMessage({
-          type: "execute",
-          source,
-          contextKeys: Object.keys(context),
-        });
-
-        // Handle calls from worker
-        worker.on("message", async (msg) => {
-          if (msg.type === "call") {
-            try {
-              const result = await invoker.invoke({
-                objectId: msg.objectId,
-                method: msg.method,
-                args: msg.args,
-              });
-              worker.postMessage({
-                type: "response",
-                callId: msg.callId,
-                result,
-              });
-            } catch (err) {
-              worker.postMessage({
-                type: "response",
-                callId: msg.callId,
-                error: err.message,
-              });
-            }
-          }
-        });
-
-        // Wait for result
-        return new Promise((resolve) => {
-          worker.on("message", (msg) => {
-            if (msg.type === "result") {
-              resolve({ result: msg.value, error: msg.error, logs: msg.logs });
-            }
-          });
-        });
-      },
-
-      teardown: async () => {
-        worker?.terminate();
-      },
-    },
-
-    init: async () => {
-      // Spawn worker
-      worker = new Worker("./worker-runtime.js");
-    },
-  };
-};
-```
-
-#### Deno Runtime Plugin
-
-```ts
-// .runner/plugins/runtime-deno.ts
-
-import { spawn } from "node:child_process";
-import type { Runtime, ContextInvoker } from "../../src/lib/types.ts";
-
-export const denoRuntimePlugin = (): Plugin => async () => ({
-  runtime: {
-    name: "deno-subprocess",
-
-    // Deno handles TS natively, but we transform for context injection
-    transform: async (source) => {
-      // Inject context proxies
-      const proxySetup = Object.keys(context)
-        .map((k) => `const ${k} = createProxy('${k}');`)
-        .join("\n");
-
-      return proxySetup + "\n" + source;
-    },
-
-    execute: async (source, context, invoker) => {
-      const child = spawn("deno", [
-        "run",
-        "--allow-net=none",
-        "--allow-read=none",
-        "--allow-write=none",
-        "--allow-env=none",
-        "--allow-run=none",
-        "--allow-ffi=none",
-        "/tmp/deno-worker.ts",
-      ]);
-
-      // IPC via stdin/stdout JSON lines
-      child.stdin.write(JSON.stringify({ type: "start", source }) + "\n");
-
-      child.stdout.on("data", (data) => {
-        const lines = data.toString().split("\n");
-        for (const line of lines) {
-          const msg = JSON.parse(line);
-          if (msg.type === "call") {
-            invoker.invoke(msg).then((result) => {
-              child.stdin.write(
-                JSON.stringify({
-                  type: "response",
-                  callId: msg.callId,
-                  result,
-                }) + "\n",
-              );
-            });
-          }
-        }
+export default (): Plugin => async () => ({
+  executor: {
+    name: "vm",
+    execute: async (code, context): Promise<RunOutput> => {
+      // Create sandboxed context with limited globals
+      const sandbox = Object.freeze({
+        ...context,
+        console: { log: (...args) => logs.push(args.join(" ")) },
+        // No process, require, global
       });
 
-      // Wait for completion
-      // ...
-    },
+      const ctx = vm.createContext(sandbox);
+      const script = new vm.Script(code);
 
-    teardown: async () => {
-      // Cleanup process
+      try {
+        const result = await script.runInContext(ctx, { timeout: 5000 });
+        return { result, error: undefined };
+      } catch (err) {
+        return { result: undefined, error: err.message };
+      }
     },
   },
 });
 ```
 
+**isolated-vm Executor:**
+
+```ts
+// .runner/plugins/executor-isolated-vm.ts
+import ivm from "isolated-vm";
+import type { Plugin, Executor, RunOutput } from "../../src/lib/types.ts";
+
+export default (): Plugin => async () => ({
+  executor: {
+    name: "isolated-vm",
+    execute: async (code, context): Promise<RunOutput> => {
+      const isolate = new ivm.Isolate({ memoryLimit: 128 });
+      const ctx = await isolate.createContext();
+
+      // Inject context as References
+      for (const [key, value] of Object.entries(context)) {
+        const ref = new ivm.Reference(value);
+        ctx.global.set(key, ref.derefInto(), { reference: true });
+      }
+
+      const script = await isolate.compileScript(code);
+
+      try {
+        const result = await script.run(ctx, {
+          timeout: 5000,
+          result: { copy: true },
+        });
+        return { result, error: undefined };
+      } catch (err) {
+        return { result: undefined, error: err.message };
+      } finally {
+        isolate.dispose();
+      }
+    },
+  },
+});
+```
+
+#### Plugin Composition
+
+**Full config example:**
+
+```ts
+// .runner/config.ts
+import amaroPlugin from "./plugins/transform-amaro.ts";
+import executorVM from "./plugins/executor-vm.ts";
+import playwrightPlugin from "./plugins/playwright.ts";
+
+export default defineConfig({
+  plugins: [
+    amaroPlugin(), // Transform: strip types
+    executorVM(), // Executor: node:vm with timeout
+    playwrightPlugin(), // Context: browser, page
+  ],
+});
+```
+
+Execution:
+
+1.  Transforms: `amaroPlugin.transform()` → JS code
+2.  Context: `playwrightPlugin.beforeRun()` → `{ context: { page, browser } }`
+3.  Executor: `executorVM.execute(code, context)` → result
+4.  Cleanup: `playwrightPlugin.afterRun()` + `executorVM.teardown()`
+
 ## Implementation Roadmap
 
 ### Phase 1: Core Abstraction
 
-1. Define `Runtime` and `ContextInvoker` interfaces in `src/lib/types.ts`
-2. Update `Runner` to use runtime abstraction
-3. Implement `defaultRuntime` (current `new Function` behavior)
+1. Define `Executor`, `TransformResult`, and updated `Hooks` interface in `src/lib/types.ts`
+2. Update `Runner` to:
+   - Execute transforms sequentially (all plugins)
+   - Use first executor (or default)
+3. Implement `defaultExecutor` (current `new Function` behavior)
 4. Update existing plugins to work with new interface
-5. Add esbuild transform for TypeScript support
+5. Add amaro transform plugin for TypeScript support
 
-**Goal:** Backwards compatible, foundation for runtime plugins, TypeScript support
+**Goal:** Backwards compatible, foundation for transform/executor plugins, TypeScript support
 
-### Phase 2: node:vm Runtime
+### Phase 2: Transform Plugins
 
-1. Add `node:vm` runtime implementation
+1. Add `amaro` dependency
+2. Implement amaro transform plugin (type stripping)
+3. Implement esbuild transform plugin (fallback for complex syntax)
+4. Test transform chain: amaro → esbuild → custom
+5. Add source map support (optional)
+
+**Goal:** Working TypeScript transformation via plugin chain
+
+### Phase 3: node:vm Executor
+
+1. Add `node:vm` executor plugin
 2. Create sandboxed context with limited globals
 3. Test with Playwright plugin (should work with closures)
 4. Add timeout enforcement
 5. Document escape hatch risks
 
-**Goal:** Working runtime with timeout, mild isolation, closures work
+**Goal:** Working executor with timeout, mild isolation, closures work
 
-### Phase 3: isolated-vm Runtime
+### Phase 4: isolated-vm Executor
 
 1. Add `isolated-vm` dependency
 2. Implement Reference-based property access
@@ -1640,35 +1653,24 @@ export const denoRuntimePlugin = (): Plugin => async () => ({
 5. Test with Playwright - document closure limitations
 6. Add memory limits and timeout
 
-**Goal:** Secure runtime with property access, document limitations
+**Goal:** Secure executor with property access, document limitations
 
-### Phase 4: Atomics.wait Runtime (Experimental)
+### Phase 5: Executor Compatibility Documentation
 
-1. Implement Worker + monitor thread architecture
-2. Create SharedArrayBuffer IPC protocol
-3. Implement synchronous proxy with `Atomics.wait`
-4. Test JSON-only scenarios
-5. Document function/closure limitations clearly
+1. Document which plugins work with which executor
+   - Playwright: `defaultExecutor`, `node:vm` (full), `isolated-vm` (partial)
+   - HTTP/API clients: All executors work
+2. Add executor compatibility validation before execution
+3. Plugin declares requirements: `{ requiresClosures: true }`
 
-**Goal:** Proof of concept for pure-JS synchronous proxy, evaluate viability
-
-### Phase 5: Plugin Runtime Selection
-
-1. Add runtime selection API to plugins
-2. Document which plugins work with which runtime
-   - Playwright: `new Function`, `node:vm` (full), `isolated-vm` (partial), `Atomics.wait` (broken)
-   - HTTP/API clients: All runtimes work
-3. Add runtime configuration in `.runner/config.ts`
-4. Runtime compatibility validation before execution
-
-**Goal:** Flexible runtime selection with clear compatibility documentation
+**Goal:** Clear compatibility documentation, validation before execution
 
 ### Phase 6: Security Hooks (Optional)
 
-1. Add `ContextInvoker` hooks for auditing
+1. Add `beforeCall` / `afterCall` hooks for auditing
 2. Add optional pre-call prompts
 3. Add rate limiting example
-4. Document security patterns for each runtime
+4. Document security patterns for each executor
 
 **Goal:** Demonstrate security gatekeeping capabilities
 
@@ -1676,51 +1678,44 @@ export const denoRuntimePlugin = (): Plugin => async () => ({
 
 ### Resolved
 
-1. **Property access in isolated runtimes:** Can synchronous property access work?
-   - ✅ Yes with `isolated-vm` (native `getSync/copySync`)
-   - ✅ Yes with `Atomics.wait` (blocking on SharedArrayBuffer)
-   - ❌ No with executor-style runtimes (proxy pattern limitation)
+1. **Transform architecture:** Should transform be part of Runtime or separate?
+   - ✅ Separate - follows Rollup/Vite plugin pattern
+   - Sequential execution, all plugins run
+   - Return `{ code }` to transform, `null` to skip
 
-2. **Functions crossing isolate boundary:** Can we pass functions to methods like `page.evaluate(fn)`?
-   - ✅ Yes with `new Function` and `node:vm` (same context)
-   - ⚠️ Partial with `isolated-vm` (Callback class but loses closure)
-   - ❌ No with `Atomics.wait` (JSON only)
-   - ❌ No with executor-style runtimes (no property access + JSON only)
+2. **Executor selection:** How to choose executor?
+   - ✅ First plugin wins (like Rollup `resolveId`)
+   - Default executor provided (new Function)
+   - Clean separation from transform
 
-3. **Security vs functionality trade-off:** Can we have both security and closures?
-   - ❌ No, fundamentally impossible
-   - Closures exist only in sandbox memory, host cannot access
-   - Must choose: security OR closure support
+3. **Plugin composition:** Can multiple transforms chain?
+   - ✅ Yes - amaro (strip) → esbuild (fallback) → custom
+   - Each transform receives previous result
+   - Source maps can chain
 
 ### Still Open
 
-1. **Runtime selection UX:** How should users select runtime?
-   - Option A: Global config in `.runner/config.ts`
-   - Option B: Per-plugin declaration
-   - Option C: Per-execution override
-   - Option D: Auto-detect based on plugin requirements
-
-2. **Compatibility validation:** How to prevent incompatible runtime + plugin combinations?
+1. **Executor compatibility validation:** How to prevent incompatible executor + plugin combinations?
    - Plugin declares `{ requiresClosures: true }`
    - Runner validates before execution
    - Error message with alternatives
 
-3. **Error handling across boundary:** How to preserve error context?
+2. **Error handling across boundary:** How to preserve error context?
    - Stack traces get lost in IPC
    - Need to serialize error info carefully
    - `isolated-vm` preserves some stack context
 
-4. **Streaming results:** Methods like `page.pdf()` return large binary data
+3. **Streaming results:** Methods like `page.pdf()` return large binary data
    - Current: Buffer entire result in memory
    - Future: Stream chunks?
    - Different for each runtime (direct vs IPC)
 
-5. **Performance measurement:** Actual latency in production
+4. **Performance measurement:** Actual latency in production
    - `isolated-vm`: Need benchmarks
    - `Atomics.wait`: Need benchmarks
    - Compare with Playwright's inherent latency
 
-6. **Plugin documentation:** How to clearly communicate limitations?
+5. **Plugin documentation:** How to clearly communicate limitations?
    - Which methods work in which runtime?
    - Closure patterns that won't work in isolated-vm
    - Security implications of each runtime
@@ -1789,6 +1784,7 @@ export const denoRuntimePlugin = (): Plugin => async () => ({
 Runner faces a fundamental trade-off:
 
 ```
+
         Security (Isolation)
               ▲
              /│\
@@ -1801,10 +1797,12 @@ Runner faces a fundamental trade-off:
       /       │       \
      /        │        \
     ──────────┼──────────▶
-   Functions  │  Simplicity
-   (Closures) │
-              │
-              ▼
+
+Functions │ Simplicity
+(Closures) │
+│
+▼
+
 ```
 
 - **Maximum security** (`isolated-vm`, `Atomics.wait`): Sacrifices closures
@@ -1813,92 +1811,72 @@ Runner faces a fundamental trade-off:
 
 ### Practical Recommendation
 
-**Phase 1-2:** Implement `new Function` + `node:vm` runtimes
+**Phase 1-2:** Implement transform chain + amaro plugin
+
+- TypeScript via amaro type stripping (fast, native)
+- Fallback esbuild for complex syntax
+- Default executor (new Function) for backwards compat
+
+**Phase 3:** Implement `node:vm` executor plugin
 
 - Full Playwright compatibility
-- TypeScript via esbuild
-- Timeout enforcement (node:vm)
+- Timeout enforcement
 - Document security risks clearly
 
-**Phase 3:** Implement `isolated-vm` runtime
+**Phase 4:** Implement `isolated-vm` executor
 
 - Secure execution for non-Playwright plugins
 - Document closure limitations: `page.evaluate(() => localVar)` won't work
 - Memory limits, timeout, true isolation
 
-**Phase 4:** Experimental `Atomics.wait` runtime
-
-- Proof of concept
-- Evaluate for JSON-only scenarios
-- Document complexity and limitations
-
-**Phase 5:** Runtime selection API
+**Phase 5:** Executor compatibility validation
 
 - Plugin declares requirements: `{ requiresClosures: true }`
 - Runner validates compatibility before execution
 - Clear documentation of what works where
 
-### The Hard Truth
-
-**For Playwright automation with closures, there is no secure runtime.**
-
-Browser automation patterns like:
-
-- `page.evaluate(() => localStorage.getItem('token'))`
-- `page.waitForFunction(() => window.loaded)`
-- `page.route('**', handler => handler.continue())`
-
-These fundamentally require the sandbox's closure context to be accessible to the host. No isolation mechanism can solve this because the closure variables exist only in the sandbox's memory space.
-
-**Options:**
-
-1. Accept weak security (`node:vm`) for Playwright, use strong isolation for other plugins
-2. Restrict Playwright usage to closure-free patterns
-3. Document the trade-off clearly and let users decide
-
-### Security Through Gatekeeping (Revisited)
-
-Even with `node:vm` or `new Function`, the hook system provides some security:
-
-```ts
-// Intercept all calls regardless of runtime
-const invoker = {
-  invoke: async ({ objectId, method, args }) => {
-    // Audit
-    auditLog({ objectId, method, args });
-
-    // Policy enforcement
-    if (method === "goto" && !allowedDomains.includes(args.url)) {
-      throw new Error("Domain not allowed");
-    }
-
-    // User prompt
-    if (sensitiveOperations.includes(method)) {
-      const approved = await promptUser(`Allow ${method}?`);
-      if (!approved) throw new Error("User denied");
-    }
-
-    return context[objectId][method](args);
-  },
-};
-```
-
-This works with ALL runtimes. The security is in WHAT you allow, not WHERE it runs.
-
 ### Final Recommendation
 
-**Start with `new Function` + `node:vm`:**
+**Start with transform plugins + default executor:**
+
+```ts
+// .runner/config.ts
+import amaroPlugin from "./plugins/transform-amaro.ts";
+import playwrightPlugin from "./plugins/playwright.ts";
+
+export default defineConfig({
+  plugins: [
+    amaroPlugin(), // Transform: strip types
+    playwrightPlugin(), // Context: browser, page
+  ],
+});
+```
 
 - Full Playwright compatibility
-- TypeScript via esbuild transform
+- TypeScript via amaro transform
 - Add gatekeeping hooks for policy enforcement
 - Document clearly: "Not for truly untrusted code"
 
-**Add `isolated-vm` for secure scenarios:**
+**Add executor plugins for isolation:**
 
-- HTTP clients, database operations, computation
-- No closures needed for these
-- True isolation, memory limits, timeout
+```ts
+// .runner/config.ts (secure mode)
+import amaroPlugin from "./plugins/transform-amaro.ts";
+import executorVM from "./plugins/executor-vm.ts";
+import httpPlugin from "./plugins/http.ts";
+
+export default defineConfig({
+  plugins: [
+    amaroPlugin(), // Transform
+    executorVM(), // Executor: timeout + mild isolation
+    httpPlugin(), // Context: httpClient
+  ],
+});
+```
+
+- HTTP clients, database operations: use `isolated-vm` executor
+- Playwright: use `node:vm` or default executor
+- True isolation, memory limits, timeout for non-closure plugins
 
 **Document runtime compatibility matrix:**
 
