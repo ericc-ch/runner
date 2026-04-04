@@ -14,19 +14,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-
-      - uses: oven-sh/setup-bun@v2
-        # This shit is required because of npm oidc
-        # Im too lazy how to configure bun equivalent
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
+      - uses: pnpm/action-setup@v4
 
-      - run: bun install --ignore-scripts
-      - run: bun run build
+      - run: pnpm install --ignore-scripts
+      - run: pnpm run build
 
-      - run: bun run scripts/release.ts
+      - run: pnpm run scripts/release.ts
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
