@@ -1,4 +1,7 @@
 import { Effect, FileSystem, Layer, Path, Schema, ServiceMap } from "effect"
+import { executorNewFnPlugin } from "../builtins/executor-new-fn.ts"
+import { consolePlugin } from "../builtins/console.ts"
+import { searchPlugin } from "../builtins/search.ts"
 import { paths } from "./paths.ts"
 import type { NormalizedPlugin, Plugin } from "./types.ts"
 
@@ -27,8 +30,12 @@ const PluginSchema = Schema.declare<Plugin>(isPlugin, {
 
 export class ConfigSchema extends Schema.Class<ConfigSchema>("ConfigSchema")({
   plugins: Schema.optional(Schema.Array(PluginSchema)),
+  disableBuiltinPlugins: Schema.optional(Schema.Boolean),
 }) {
-  static readonly empty: ConfigSchema = { plugins: [] }
+  static readonly empty: ConfigSchema = {
+    plugins: [],
+    disableBuiltinPlugins: false,
+  }
 }
 
 export function defineConfig(config: ConfigSchema): ConfigSchema {
@@ -49,6 +56,8 @@ export class Config extends ServiceMap.Service<Config>()("@ericc-ch/runner/Confi
       })
       return imported.default
     })
+
+    const builtinPlugins: Plugin[] = [executorNewFnPlugin(), consolePlugin(), searchPlugin()]
 
     const load = Effect.fn(function* () {
       const cwd = yield* Effect.sync(() => process.cwd())
@@ -76,7 +85,17 @@ export class Config extends ServiceMap.Service<Config>()("@ericc-ch/runner/Confi
         ),
       )
 
-      const allPlugins = [...(global.plugins ?? []), ...(local.plugins ?? [])]
+      // Check if built-in plugins should be disabled
+      const disableBuiltin =
+        global.disableBuiltinPlugins === true || local.disableBuiltinPlugins === true
+
+      // Built-in plugins first, then global, then local
+      // Last executor wins, so user plugins can override built-ins
+      const allPlugins: Plugin[] = [
+        ...(disableBuiltin ? [] : builtinPlugins),
+        ...(global.plugins ?? []),
+        ...(local.plugins ?? []),
+      ]
       yield* Effect.logDebug("Loaded plugins:", allPlugins.length)
 
       return {

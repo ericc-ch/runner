@@ -12,8 +12,8 @@ export class Runner extends ServiceMap.Service<Runner>()("@ericc-ch/runner/Runne
     const init = Effect.fn(function* (plugins: NormalizedPlugin[]) {
       const resolved = yield* Effect.forEach(plugins, (plugin) => Effect.promise(plugin))
 
-      const firstWithExecutor = resolved.find((h) => h.executor !== undefined)
-      activeExecutor = firstWithExecutor?.executor
+      const lastWithExecutor = resolved.findLast((h) => h.executor !== undefined)
+      activeExecutor = lastWithExecutor?.executor
 
       hooks = resolved.map(({ teardown, beforeRun, afterRun }) => ({
         teardown,

@@ -1,4 +1,4 @@
-export { defaultExecutor, defaultExecutorPlugin } from "./builtins/default-executor.ts"
+export { executorNewFn, executorNewFnPlugin } from "./builtins/executor-new-fn.ts"
 export { consolePlugin } from "./builtins/console.ts"
 export { searchPlugin } from "./builtins/search.ts"
 export {

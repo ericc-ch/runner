@@ -1,6 +1,6 @@
-import { consolePlugin, defaultExecutorPlugin, defineConfig, searchPlugin } from "../src/main.ts"
+import { consolePlugin, executorNewFnPlugin, defineConfig, searchPlugin } from "../src/main.ts"
 import { playwrightPlugin } from "./plugins/playwright.ts"
 
 export default defineConfig({
-  plugins: [defaultExecutorPlugin(), consolePlugin(), searchPlugin(), playwrightPlugin()],
+  plugins: [executorNewFnPlugin(), consolePlugin(), searchPlugin(), playwrightPlugin()],
 })
