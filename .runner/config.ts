@@ -1,20 +1,16 @@
 import {
   consolePlugin,
+  defaultExecutorPlugin,
   defineConfig,
-  executorNewFnPlugin,
   searchPlugin,
-  typeStripPlugin,
 } from "../src/main.ts"
 import { playwrightPlugin } from "./plugins/playwright.ts"
 
 export default defineConfig({
   plugins: [
-    typeStripPlugin(),
-
+    defaultExecutorPlugin(),
     consolePlugin(),
     searchPlugin(),
     playwrightPlugin(),
-
-    executorNewFnPlugin(),
   ],
 })

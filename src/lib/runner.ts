@@ -1,6 +1,6 @@
 import { Effect, Formatter, Layer, ServiceMap } from "effect"
 import { ExecutionError, HookError, noExecutorConfiguredMessage } from "./errors.ts"
-import type { Executor, NormalizedPlugin, RequiredHooks, RunInput } from "./types.ts"
+import type { Executor, NormalizedPlugin, RequiredHooks, RunInput, RunOutput } from "./types.ts"
 
 export { ExecutionError, HookError, noExecutorConfiguredMessage } from "./errors.ts"
 
@@ -13,10 +13,7 @@ export class Runner extends ServiceMap.Service<Runner>()("@ericc-ch/runner/Runne
       const resolved = yield* Effect.forEach(plugins, (plugin) => Effect.promise(plugin))
 
       const firstWithExecutor = resolved.find((h) => h.executor !== undefined)
-      if (firstWithExecutor?.executor === undefined) {
-        return yield* Effect.fail(noExecutorConfiguredMessage)
-      }
-      activeExecutor = firstWithExecutor.executor
+      activeExecutor = firstWithExecutor?.executor
 
       hooks = resolved.map(({ teardown, beforeRun, afterRun }) => ({
         teardown,
@@ -28,7 +25,10 @@ export class Runner extends ServiceMap.Service<Runner>()("@ericc-ch/runner/Runne
     const execute = Effect.fn(function* (source: string) {
       const executor = activeExecutor
       if (executor === undefined) {
-        return yield* Effect.fail(noExecutorConfiguredMessage)
+        return yield* Effect.succeed<RunOutput>({
+          result: undefined,
+          error: noExecutorConfiguredMessage,
+        })
       }
 
       const currentState: RunInput = { source, context: {} }
@@ -54,7 +54,7 @@ export class Runner extends ServiceMap.Service<Runner>()("@ericc-ch/runner/Runne
 
       const currentOutput = yield* Effect.tryPromise({
         try: () =>
-          executor({
+          executor.execute({
             code: currentState.source,
             context: currentState.context,
           }),
@@ -92,6 +92,14 @@ export class Runner extends ServiceMap.Service<Runner>()("@ericc-ch/runner/Runne
           }),
         { discard: true },
       )
+
+      const executor = activeExecutor
+      if (executor !== undefined) {
+        yield* Effect.tryPromise({
+          try: () => executor.teardown?.() ?? Promise.resolve(),
+          catch: (cause) => new HookError({ hook: "executor.teardown", cause }),
+        })
+      }
 
       hooks = []
       activeExecutor = undefined

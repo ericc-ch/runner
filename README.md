@@ -154,7 +154,12 @@ Optional helpers (exported from the package; add them to `plugins` if you want t
 - `searchPlugin` — powers the MCP `search` tool and `search()` in execute context
 
 ```typescript
-import { consolePlugin, defaultExecutorPlugin, defineConfig, searchPlugin } from "@ericc-ch/runner"
+import {
+  consolePlugin,
+  defaultExecutorPlugin,
+  defineConfig,
+  searchPlugin,
+} from "@ericc-ch/runner"
 
 export default defineConfig({
   plugins: [defaultExecutorPlugin(), consolePlugin(), searchPlugin()],

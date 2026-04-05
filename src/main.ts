@@ -1,16 +1,8 @@
+export { defaultExecutor, defaultExecutorPlugin } from "./builtins/default-executor.ts"
 export { consolePlugin } from "./builtins/console.ts"
-export { executorNewFn, executorNewFnPlugin } from "./builtins/executor-new-fn.ts"
 export { searchPlugin } from "./builtins/search.ts"
-export { typeStripPlugin } from "./builtins/type-strip.ts"
-export {
-  Config,
-  ConfigLoadError,
-  ConfigSchema,
-  defineConfig,
-  normalizePlugin,
-} from "./lib/config.ts"
+export { Config, ConfigLoadError, ConfigSchema, defineConfig, normalizePlugin } from "./lib/config.ts"
 export { paths } from "./lib/paths.ts"
-export { ExecutionError, HookError, noExecutorConfiguredMessage, Runner } from "./lib/runner.ts"
 export type {
   Executor,
   ExecutorInput,
@@ -22,3 +14,9 @@ export type {
   RunInput,
   RunOutput,
 } from "./lib/types.ts"
+export {
+  ExecutionError,
+  HookError,
+  noExecutorConfiguredMessage,
+  Runner,
+} from "./lib/runner.ts"

@@ -17,15 +17,20 @@ export const playwrightPlugin =
   async () => {
     const { headless = false } = options
 
-    const context = await playwright.chromium.launchPersistentContext(profilePath, {
+    // const context = await playwright.chromium.launchPersistentContext(profilePath, {
+    //   headless,
+    //   executablePath,
+    // })
+    // const browser = context.browser() as playwright.Browser
+    const browser = await playwright.chromium.launch({
       headless,
       executablePath,
     })
-    const browser = context.browser() as playwright.Browser
+    const context = await browser.newContext()
 
     return {
       beforeRun: async (_input: RunInput) => {
-        const page = await context.newPage()
+        const page = await browser.newPage()
 
         return {
           context: {
@@ -43,7 +48,7 @@ export const playwrightPlugin =
       },
 
       teardown: async () => {
-        await context.close()
+        await browser.close()
       },
     }
   }
