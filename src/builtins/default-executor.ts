@@ -9,10 +9,7 @@ export const defaultExecutor: Executor = {
       const params = Object.keys(context)
       const values = Object.values(context)
       // oxlint-disable-next-line typescript/no-implied-eval
-      const fn = new Function(
-        ...params,
-        `"use strict"; return (async () => {\n${code}\n})();`,
-      )
+      const fn = new Function(...params, `"use strict"; return (async () => {\n${code}\n})();`)
       const result = await fn(...values)
       return { result, error: undefined }
     } catch (cause) {
