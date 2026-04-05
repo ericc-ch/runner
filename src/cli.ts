@@ -13,8 +13,8 @@ const evalFlag = Flag.string("eval").pipe(
   Flag.optional,
 )
 
-const runCommand = Command.make(
-  "run",
+const executeCommand = Command.make(
+  "execute",
   { file, evalFlag },
   Effect.fn(function* ({ file, evalFlag }) {
     const config = yield* Config
@@ -41,15 +41,15 @@ const runCommand = Command.make(
   Command.withDescription("Execute TypeScript with plugin-provided context"),
   Command.withExamples([
     {
-      command: "runner run script.ts",
+      command: "runner execute script.ts",
       description: "Execute a TypeScript file",
     },
     {
-      command: "runner run -e 'console.log(\"Hello\")'",
+      command: "runner execute -e 'console.log(\"Hello\")'",
       description: "Evaluate TypeScript code from string",
     },
     {
-      command: "cat script.ts | runner run",
+      command: "cat script.ts | runner execute",
       description: "Execute TypeScript code from stdin",
     },
   ]),
@@ -67,7 +67,7 @@ const mcpCommand = Command.make(
 
 const command = Command.make("runner", {}).pipe(
   Command.withDescription("TypeScript execution environment with plugin-based context injection"),
-  Command.withSubcommands([runCommand, mcpCommand]),
+  Command.withSubcommands([executeCommand, mcpCommand]),
 )
 
 void runtime.runPromise(command.pipe(Command.run({ version: "0.0.1" })))
