@@ -1,14 +1,14 @@
 import { describe, it } from "@effect/vitest"
 import { deepStrictEqual, strictEqual } from "@effect/vitest/utils"
-import { ConfigSchema, defineConfig, makeRequiredPlugin } from "./config.ts"
-import type { Hooks, Plugin } from "./types.ts"
+import { ConfigSchema, defineConfig, normalizePlugin } from "./config.ts"
+import type { Executor, Hooks, Plugin } from "./types.ts"
 
 const makeTestPlugin =
   (hooks: Hooks): Plugin =>
   async () =>
     hooks
 
-describe("makeRequiredPlugin", () => {
+describe("normalizePlugin", () => {
   it("preserves all hooks when plugin returns all hooks", async () => {
     const allHooks: Hooks = {
       teardown: async () => {},
@@ -16,12 +16,13 @@ describe("makeRequiredPlugin", () => {
       afterRun: async () => {},
     }
     const plugin = makeTestPlugin(allHooks)
-    const required = makeRequiredPlugin(plugin)
-    const result = await required()
+    const normalized = normalizePlugin(plugin)
+    const result = await normalized()
 
     strictEqual(typeof result.teardown, "function")
     strictEqual(typeof result.beforeRun, "function")
     strictEqual(typeof result.afterRun, "function")
+    strictEqual(result.executor, undefined)
   })
 
   it("fills missing hooks with defaults", async () => {
@@ -29,8 +30,8 @@ describe("makeRequiredPlugin", () => {
       teardown: async () => {},
     }
     const plugin = makeTestPlugin(partialHooks)
-    const required = makeRequiredPlugin(plugin)
-    const result = await required()
+    const normalized = normalizePlugin(plugin)
+    const result = await normalized()
 
     strictEqual(typeof result.teardown, "function")
     strictEqual(typeof result.beforeRun, "function")
@@ -39,12 +40,23 @@ describe("makeRequiredPlugin", () => {
 
   it("returns all defaults when plugin returns no hooks", async () => {
     const plugin = makeTestPlugin({})
-    const required = makeRequiredPlugin(plugin)
-    const result = await required()
+    const normalized = normalizePlugin(plugin)
+    const result = await normalized()
 
     strictEqual(typeof result.teardown, "function")
     strictEqual(typeof result.beforeRun, "function")
     strictEqual(typeof result.afterRun, "function")
+  })
+
+  it("passes through executor from plugin hooks", async () => {
+    const mockExecutor: Executor = async () => ({
+      result: 1,
+      error: undefined,
+    })
+    const plugin = makeTestPlugin({ executor: mockExecutor })
+    const result = await normalizePlugin(plugin)()
+
+    strictEqual(result.executor, mockExecutor)
   })
 })
 

@@ -1,6 +1,23 @@
 export { consolePlugin } from "./builtins/console.ts"
+export { executorNewFn, executorNewFnPlugin } from "./builtins/executor-new-fn.ts"
 export { searchPlugin } from "./builtins/search.ts"
-export { Config, ConfigLoadError, ConfigSchema, defineConfig } from "./lib/config.ts"
+export {
+  Config,
+  ConfigLoadError,
+  ConfigSchema,
+  defineConfig,
+  normalizePlugin,
+} from "./lib/config.ts"
 export { paths } from "./lib/paths.ts"
-export type { Hooks, Plugin, RequiredPlugin, RunInput, RunOutput } from "./lib/types.ts"
-export { ExecutionError, HookError, Runner } from "./lib/runner.ts"
+export { ExecutionError, HookError, noExecutorConfiguredMessage, Runner } from "./lib/runner.ts"
+export type {
+  Executor,
+  ExecutorInput,
+  Hooks,
+  NormalizedPlugin,
+  NormalizedPluginResult,
+  Plugin,
+  RequiredHooks,
+  RunInput,
+  RunOutput,
+} from "./lib/types.ts"

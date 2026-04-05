@@ -1,24 +1,36 @@
-import { Effect, Formatter, Layer, Schema, ServiceMap } from "effect"
-import type { RequiredHooks, RequiredPlugin, RunInput, RunOutput } from "./types.ts"
+import { Effect, Formatter, Layer, ServiceMap } from "effect"
+import { ExecutionError, HookError, noExecutorConfiguredMessage } from "./errors.ts"
+import type { Executor, NormalizedPlugin, RequiredHooks, RunInput } from "./types.ts"
 
-export class HookError extends Schema.TaggedErrorClass<HookError>()("HookError", {
-  hook: Schema.String,
-  cause: Schema.Defect,
-}) {}
-
-export class ExecutionError extends Schema.TaggedErrorClass<ExecutionError>()("ExecutionError", {
-  cause: Schema.Defect,
-}) {}
+export { ExecutionError, HookError, noExecutorConfiguredMessage } from "./errors.ts"
 
 export class Runner extends ServiceMap.Service<Runner>()("@ericc-ch/runner/Runner", {
   make: Effect.sync(() => {
     let hooks: RequiredHooks[] = []
+    let activeExecutor: Executor | undefined
 
-    const init = Effect.fn(function* (plugins: RequiredPlugin[]) {
-      hooks = yield* Effect.forEach(plugins, (plugin) => Effect.promise(plugin))
+    const init = Effect.fn(function* (plugins: NormalizedPlugin[]) {
+      const resolved = yield* Effect.forEach(plugins, (plugin) => Effect.promise(plugin))
+
+      const firstWithExecutor = resolved.find((h) => h.executor !== undefined)
+      if (firstWithExecutor?.executor === undefined) {
+        return yield* Effect.fail(noExecutorConfiguredMessage)
+      }
+      activeExecutor = firstWithExecutor.executor
+
+      hooks = resolved.map(({ teardown, beforeRun, afterRun }) => ({
+        teardown,
+        beforeRun,
+        afterRun,
+      }))
     })
 
     const execute = Effect.fn(function* (source: string) {
+      const executor = activeExecutor
+      if (executor === undefined) {
+        return yield* Effect.fail(noExecutorConfiguredMessage)
+      }
+
       const currentState: RunInput = { source, context: {} }
 
       for (const hook of hooks) {
@@ -40,17 +52,12 @@ export class Runner extends ServiceMap.Service<Runner>()("@ericc-ch/runner/Runne
         }
       }
 
-      const currentOutput: RunOutput = yield* Effect.tryPromise({
-        try: async () => {
-          const params = Object.keys(currentState.context)
-          const values = Object.values(currentState.context)
-          // oxlint-disable-next-line typescript/no-implied-eval
-          const fn = new Function(
-            ...params,
-            `"use strict"; return (async () => {\n${currentState.source}\n})();`,
-          )
-          return await fn(...values)
-        },
+      const currentOutput = yield* Effect.tryPromise({
+        try: () =>
+          executor({
+            code: currentState.source,
+            context: currentState.context,
+          }),
         catch: (cause) => new ExecutionError({ cause }),
       }).pipe(
         Effect.match({
@@ -58,7 +65,7 @@ export class Runner extends ServiceMap.Service<Runner>()("@ericc-ch/runner/Runne
             result: undefined,
             error: Formatter.format(error),
           }),
-          onSuccess: (result) => ({ result, error: undefined }),
+          onSuccess: (output) => output,
         }),
       )
 
@@ -85,7 +92,9 @@ export class Runner extends ServiceMap.Service<Runner>()("@ericc-ch/runner/Runne
           }),
         { discard: true },
       )
+
       hooks = []
+      activeExecutor = undefined
     })
 
     return { init, execute, teardown }

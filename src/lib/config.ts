@@ -1,12 +1,6 @@
 import { Effect, FileSystem, Layer, Path, Schema, ServiceMap } from "effect"
-import { consolePlugin } from "../builtins/console.ts"
-import { searchPlugin } from "../builtins/search.ts"
 import { paths } from "./paths.ts"
-import type { Plugin, RequiredPlugin } from "./types.ts"
-
-const builtins = {
-  plugins: [consolePlugin(), searchPlugin()],
-}
+import type { NormalizedPlugin, Plugin } from "./types.ts"
 
 export class ConfigLoadError extends Schema.TaggedErrorClass<ConfigLoadError>()("ConfigLoadError", {
   cause: Schema.Defect,
@@ -14,15 +8,16 @@ export class ConfigLoadError extends Schema.TaggedErrorClass<ConfigLoadError>()(
 
 const isPlugin = (u: unknown): u is Plugin => typeof u === "function"
 
-export const makeRequiredPlugin =
-  (plugin: Plugin): RequiredPlugin =>
+export const normalizePlugin =
+  (plugin: Plugin): NormalizedPlugin =>
   async () => {
     const hooks = await plugin()
-    return {
+    const base = {
       teardown: hooks.teardown ?? (async () => {}),
       beforeRun: hooks.beforeRun ?? (async () => {}),
       afterRun: hooks.afterRun ?? (async () => {}),
     }
+    return hooks.executor !== undefined ? { ...base, executor: hooks.executor } : base
   }
 
 const PluginSchema = Schema.declare<Plugin>(isPlugin, {
@@ -81,11 +76,11 @@ export class Config extends ServiceMap.Service<Config>()("@ericc-ch/runner/Confi
         ),
       )
 
-      const allPlugins = [...builtins.plugins, ...(global.plugins ?? []), ...(local.plugins ?? [])]
+      const allPlugins = [...(global.plugins ?? []), ...(local.plugins ?? [])]
       yield* Effect.logDebug("Loaded plugins:", allPlugins.length)
 
       return {
-        plugins: allPlugins.map(makeRequiredPlugin),
+        plugins: allPlugins.map(normalizePlugin),
       }
     })
 

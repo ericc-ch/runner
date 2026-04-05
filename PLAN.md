@@ -1575,23 +1575,33 @@ Execution:
 
 ## Implementation Roadmap
 
-### Phase 1: Core Abstraction
+### Phase 1: Core Abstraction ✅ DONE
 
-1. Define `Executor`, `TransformResult`, and updated `Hooks` interface in `src/lib/types.ts`
-2. Update `Runner` to:
-   - Execute transforms sequentially (all plugins)
-   - Use first executor (or default)
-3. Implement `defaultExecutor` (current `new Function` behavior)
-4. Update existing plugins to work with new interface
-5. Add amaro transform plugin for TypeScript support
+**Completed:**
 
-**Goal:** Backwards compatible, foundation for transform/executor plugins, TypeScript support
+- `Executor` type (simplified to function: `(input: ExecutorInput) => Promise<RunOutput>`)
+- `ExecutorInput` interface (`{ code, context }`)
+- `executor` field on `Hooks` (first plugin wins at init)
+- `RequiredHooks` interface (explicit fields, not `Required<Hooks>`)
+- `NormalizedPluginResult` and `NormalizedPlugin` types
+- `normalizePlugin` function (fills missing hooks with defaults, passes `executor` through)
+- `defaultExecutor` in `src/builtins/executor-new-fn.ts`
+- `defaultExecutorPlugin` for explicit opt-in
+- Error classes moved to `src/lib/errors.ts` (`HookError`, `ExecutionError`, `noExecutorConfiguredMessage`)
+- Runner uses `activeExecutor` with explicit failure if none configured
+- Removed automatic builtin loading (console/search must be added to `plugins`)
+- Removed implicit fallback to default executor (must register explicitly)
+- Updated tests, exports, README
+
+**Pending:**
+
+- TypeScript transform (amaro/esbuild) - decided to use `beforeRun` hook instead of separate `transform` hook
 
 ### Phase 2: Transform Plugins
 
 1. Add `amaro` dependency
-2. Implement amaro transform plugin (type stripping)
-3. Implement esbuild transform plugin (fallback for complex syntax)
+2. Implement amaro transform via `beforeRun` hook (type stripping)
+3. Implement esbuild transform via `beforeRun` hook (fallback for complex syntax)
 4. Test transform chain: amaro → esbuild → custom
 5. Add source map support (optional)
 
@@ -1642,19 +1652,23 @@ Execution:
 ### Resolved
 
 1. **Transform architecture:** Should transform be part of Runtime or separate?
-   - ✅ Separate - follows Rollup/Vite plugin pattern
-   - Sequential execution, all plugins run
-   - Return `{ code }` to transform, `null` to skip
+   - ✅ Use `beforeRun` hook instead of separate `transform` hook
+   - Plugin can return `Partial<RunInput>` with updated `source`
+   - Simpler, single hook handles context + code rewrites
 
 2. **Executor selection:** How to choose executor?
    - ✅ First plugin wins (like Rollup `resolveId`)
-   - Default executor provided (new Function)
-   - Clean separation from transform
+   - No implicit fallback - must register executor explicitly
+   - `defaultExecutorPlugin()` for opt-in
 
-3. **Plugin composition:** Can multiple transforms chain?
-   - ✅ Yes - amaro (strip) → esbuild (fallback) → custom
-   - Each transform receives previous result
-   - Source maps can chain
+3. **Executor type:** Should executor be an object or function?
+   - ✅ Function: `(input: ExecutorInput) => Promise<RunOutput>`
+   - No `name` field needed
+   - No `teardown` - plugins handle cleanup via their own `teardown` hook
+
+4. **Plugin composition:** Can multiple transforms chain?
+   - ✅ Yes - multiple `beforeRun` hooks can each update `source`
+   - Each receives previous result via `currentState` merge
 
 ### Still Open
 

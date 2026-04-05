@@ -138,6 +138,7 @@ export default defineConfig({
 
 Plugin hooks:
 
+- `executor` - How user code runs (first plugin that sets this wins). Use `defaultExecutorPlugin()` unless you supply your own `Executor`.
 - `teardown` - Cleanup plugin (runs once)
 - `beforeRun` - Inject context before each execution
 - `afterRun` - Process output after each execution
@@ -147,10 +148,20 @@ Config files:
 - Global: `~/.config/runner/config.ts`
 - Local: `./.runner/config.ts`
 
-Built-in plugins (auto-loaded):
+Optional helpers (exported from the package; add them to `plugins` if you want them):
 
-- `console` - Captures console.log/error/warn output
-- `search` - Provides context search functionality
+- `consolePlugin` — captures `console.log` / `error` / `warn` into run output
+- `searchPlugin` — powers the MCP `search` tool and `search()` in execute context
+
+```typescript
+import { consolePlugin, defaultExecutorPlugin, defineConfig, searchPlugin } from "@ericc-ch/runner"
+
+export default defineConfig({
+  plugins: [defaultExecutorPlugin(), consolePlugin(), searchPlugin()],
+})
+```
+
+You must register an **executor** (e.g. `defaultExecutorPlugin()` for the built-in `new Function` runner). Without it, `execute` returns an error.
 
 ## Security
 
