@@ -1,6 +1,7 @@
 export { consolePlugin } from "./builtins/console.ts"
 export { executorNewFn, executorNewFnPlugin } from "./builtins/executor-new-fn.ts"
 export { searchPlugin } from "./builtins/search.ts"
+export { typeStripPlugin } from "./builtins/type-strip.ts"
 export {
   Config,
   ConfigLoadError,

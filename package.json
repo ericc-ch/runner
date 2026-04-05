@@ -49,6 +49,7 @@
   "dependencies": {
     "@effect/platform-node": "^4.0.0-beta.43",
     "@modelcontextprotocol/server": "2.0.0-alpha.2",
+    "amaro": "^1.1.8",
     "effect": "^4.0.0-beta.43",
     "env-paths": "^4.0.0"
   },

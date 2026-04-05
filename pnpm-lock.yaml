@@ -14,6 +14,9 @@ importers:
       '@modelcontextprotocol/server':
         specifier: 2.0.0-alpha.2
         version: 2.0.0-alpha.2(@cfworker/json-schema@4.1.1)
+      amaro:
+        specifier: ^1.1.8
+        version: 1.1.8
       effect:
         specifier: ^4.0.0-beta.43
         version: 4.0.0-beta.43
@@ -763,6 +766,10 @@ packages:
 
   '@vitest/utils@4.1.2':
     resolution: {integrity: sha512-xw2/TiX82lQHA06cgbqRKFb5lCAy3axQ4H4SoUFhUsg+wztiet+co86IAMDtF6Vm1hc7J6j09oh/rgDn+JdKIQ==}
+
+  amaro@1.1.8:
+    resolution: {integrity: sha512-bsiWM2oQ2wG5xXFMq0Y1q90i8k2mfBeajOWm1l3a0j2baW6t99+wx6rXhhCrEhBtJiM4yWwWMZpmhpVThh3cmg==}
+    engines: {node: '>=22'}
 
   ansis@4.2.0:
     resolution: {integrity: sha512-HqZ5rWlFjGiV0tDm3UxxgNRqsOTniqoKZu0pIAfh7TZQMGuZK+hH0drySty0si0QXj1ieop4+SkSfPZBPPkHig==}
@@ -1783,6 +1790,8 @@ snapshots:
       '@vitest/pretty-format': 4.1.2
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
+
+  amaro@1.1.8: {}
 
   ansis@4.2.0: {}
 
