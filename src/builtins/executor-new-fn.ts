@@ -7,17 +7,20 @@ export const executorNewFn: Executor = {
   name: "executorNewFn",
   async execute({ code, context }: ExecutorInput): Promise<RunOutput> {
     try {
-      // Strip TypeScript annotations before execution
-      const { code: strippedCode } = transformSync(code, {
-        mode: "strip-only",
-      })
       const params = Object.keys(context)
       const values = Object.values(context)
+
+      // Wrap code in async function before stripping TypeScript
+      // This makes top-level return statements valid
+      const wrappedCode = `(async () => {\n${code}\n})()`
+
+      // Strip TypeScript annotations
+      const { code: strippedCode } = transformSync(wrappedCode, {
+        mode: "strip-only",
+      })
+
       // oxlint-disable-next-line typescript/no-implied-eval
-      const fn = new Function(
-        ...params,
-        `"use strict"; return (async () => {\n${strippedCode}\n})();`,
-      )
+      const fn = new Function(...params, `"use strict"; return ${strippedCode}`)
       const result = await fn(...values)
       return { result, error: undefined }
     } catch (cause) {
