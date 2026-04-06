@@ -15,11 +15,7 @@ export interface ExecutorInput {
   context: Record<string, unknown>
 }
 
-export interface Executor {
-  readonly name: string
-  execute: (input: ExecutorInput) => Promise<RunOutput>
-  teardown?: () => Promise<void>
-}
+export type Executor = (input: ExecutorInput) => Promise<RunOutput>
 
 export interface Hooks {
   teardown?: () => Promise<void>

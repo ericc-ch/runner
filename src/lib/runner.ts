@@ -54,7 +54,7 @@ export class Runner extends ServiceMap.Service<Runner>()("@ericc-ch/runner/Runne
 
       const currentOutput = yield* Effect.tryPromise({
         try: () =>
-          executor.execute({
+          executor({
             code: currentState.source,
             context: currentState.context,
           }),
@@ -92,14 +92,6 @@ export class Runner extends ServiceMap.Service<Runner>()("@ericc-ch/runner/Runne
           }),
         { discard: true },
       )
-
-      const executor = activeExecutor
-      if (executor !== undefined) {
-        yield* Effect.tryPromise({
-          try: () => executor.teardown?.() ?? Promise.resolve(),
-          catch: (cause) => new HookError({ hook: "executor.teardown", cause }),
-        })
-      }
 
       hooks = []
       activeExecutor = undefined

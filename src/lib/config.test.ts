@@ -49,10 +49,10 @@ describe("normalizePlugin", () => {
   })
 
   it("passes through executor from plugin hooks", async () => {
-    const mockExecutor: Executor = {
-      name: "test",
-      execute: async () => ({ result: 1, error: undefined }),
-    }
+    const mockExecutor: Executor = async () => ({
+      result: 1,
+      error: undefined,
+    })
     const plugin = makeTestPlugin({ executor: mockExecutor })
     const result = await normalizePlugin(plugin)()
 
