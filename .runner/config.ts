@@ -2,5 +2,10 @@ import { consolePlugin, executorNewFnPlugin, defineConfig, searchPlugin } from "
 import { playwrightPlugin } from "./plugins/playwright.ts"
 
 export default defineConfig({
-  plugins: [executorNewFnPlugin(), consolePlugin(), searchPlugin(), playwrightPlugin()],
+  plugins: [
+    executorNewFnPlugin(),
+    consolePlugin(),
+    searchPlugin(),
+    playwrightPlugin({ headless: true }),
+  ],
 })
