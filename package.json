@@ -51,7 +51,8 @@
     "@modelcontextprotocol/server": "2.0.0-alpha.2",
     "amaro": "^1.1.8",
     "effect": "^4.0.0-beta.43",
-    "env-paths": "^4.0.0"
+    "env-paths": "^4.0.0",
+    "isolated-vm": "^6.1.2"
   },
   "devDependencies": {
     "@effect/language-service": "^0.84.3",

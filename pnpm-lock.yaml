@@ -23,6 +23,9 @@ importers:
       env-paths:
         specifier: ^4.0.0
         version: 4.0.0
+      isolated-vm:
+        specifier: ^6.1.2
+        version: 6.1.2
     devDependencies:
       '@effect/language-service':
         specifier: ^0.84.3
@@ -907,6 +910,10 @@ packages:
     resolution: {integrity: sha512-4SrR7AdnY11LHfDKTZY1u6Ga3RuxZdl3YKWWShO5iyuG5h8QS4GD2tOb04peBJ5I7pXbR+CGBNEhTcwK+FzN3g==}
     engines: {node: '>=20'}
 
+  isolated-vm@6.1.2:
+    resolution: {integrity: sha512-GGfsHqtlZiiurZaxB/3kY7LLAXR3sgzDul0fom4cSyBjx6ZbjpTrFWiH3z/nUfLJGJ8PIq9LQmQFiAxu24+I7A==}
+    engines: {node: '>=22.0.0'}
+
   jiti@2.6.1:
     resolution: {integrity: sha512-ekilCSN1jwRvIbgeg/57YFh8qQDNbwDb9xT/qu2DAHbFFZUicIl4ygVaAvzveMhMVr3LnpSKTNnwt8PoOfmKhQ==}
     hasBin: true
@@ -1030,6 +1037,10 @@ packages:
 
   node-gyp-build-optional-packages@5.2.2:
     resolution: {integrity: sha512-s+w+rBWnpTMwSFbaE0UXsRlg7hU4FjekKU4eyAih5T8nJuNZT1nNsskXpxmeqSK9UzkBl6UgRlnKc8hz8IEqOw==}
+    hasBin: true
+
+  node-gyp-build@4.8.4:
+    resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
     hasBin: true
 
   obug@2.1.1:
@@ -1935,6 +1946,10 @@ snapshots:
 
   is-safe-filename@0.1.1: {}
 
+  isolated-vm@6.1.2:
+    dependencies:
+      node-gyp-build: 4.8.4
+
   jiti@2.6.1: {}
 
   jsesc@3.1.0: {}
@@ -2028,6 +2043,8 @@ snapshots:
     dependencies:
       detect-libc: 2.1.2
     optional: true
+
+  node-gyp-build@4.8.4: {}
 
   obug@2.1.1: {}
 

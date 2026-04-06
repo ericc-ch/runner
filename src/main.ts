@@ -1,4 +1,10 @@
 export { executorNewFn, executorNewFnPlugin } from "./builtins/executor-new-fn.ts"
+export {
+  createIsolatedVmExecutor,
+  executorIsolatedVm,
+  executorIsolatedVmPlugin,
+  type IsolatedVmExecutorOptions,
+} from "./builtins/executor-isolated-vm.ts"
 export { consolePlugin } from "./builtins/console.ts"
 export { searchPlugin } from "./builtins/search.ts"
 export {
