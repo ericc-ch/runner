@@ -2,39 +2,46 @@
 
 ## Completed
 
-**Phase 1: Core Abstraction** - Pluggable executor system with explicit registration, `beforeRun` hook for transforms, no implicit fallbacks.
+**Phase 1: Core Abstraction** - ✅ DONE
 
-**Phase 2: Type Strip Plugin** - `amaro` dependency, `typeStripPlugin` strips TS annotations via `beforeRun`.
+- Pluggable executor system with explicit registration (`src/lib/runner.ts`, `src/lib/types.ts`)
+- `beforeRun` hook for transforms (`src/lib/runner.ts` lines 36-53)
+- No implicit fallbacks - explicit executor required (`src/lib/runner.ts` lines 26-32)
+
+**Phase 2: Type Strip Plugin** - ✅ DONE (integrated into executor-new-fn)
+
+- `amaro` dependency in `package.json`
+- Type stripping via `transformSync` in `src/builtins/executor-new-fn.ts` (lines 17-20)
 
 ## Roadmap
 
-### Phase 3: node:vm Executor
+### Phase 3: node:vm Executor ⏳ PENDING
 
-- Add `node:vm` executor plugin
-- Create sandboxed context with limited globals
-- Test with Playwright plugin (closures should work)
-- Add timeout enforcement
-- Document escape hatch risks
+- [ ] Add `node:vm` executor plugin (`src/builtins/executor-node-vm.ts`)
+- [ ] Create sandboxed context with limited globals
+- [ ] Test with Playwright plugin (closures should work)
+- [ ] Add timeout enforcement
+- [ ] Document escape hatch risks
 
-### Phase 4: isolated-vm Executor
+### Phase 4: isolated-vm Executor ⏳ PENDING
 
-- Add `isolated-vm` dependency
-- Implement Reference-based property access with `getSync/copySync`
-- Implement `Callback` for function arguments
-- Test with Playwright - document closure limitations
-- Add memory limits and timeout
+- [ ] Add `isolated-vm` dependency to `package.json`
+- [ ] Implement Reference-based property access with `getSync/copySync`
+- [ ] Implement `Callback` for function arguments
+- [ ] Test with Playwright - document closure limitations
+- [ ] Add memory limits and timeout
 
-### Phase 5: Executor Compatibility Documentation
+### Phase 5: Executor Compatibility Documentation ⏳ PENDING
 
-- Document plugin/executor compatibility matrix
-- Add executor compatibility validation before execution
-- Plugin declares requirements: `{ requiresClosures: true }`
+- [ ] Document plugin/executor compatibility matrix
+- [ ] Add executor compatibility validation before execution
+- [ ] Plugin declares requirements: `{ requiresClosures: true }`
 
-### Phase 6: Security Hooks (Optional)
+### Phase 6: Security Hooks (Optional) ⏳ PENDING
 
-- Add `beforeCall` / `afterCall` hooks for auditing
-- Add optional pre-call prompts
-- Add rate limiting example
+- [ ] Add `beforeCall` / `afterCall` hooks for auditing
+- [ ] Add optional pre-call prompts
+- [ ] Add rate limiting example
 
 ## Key Constraints
 
