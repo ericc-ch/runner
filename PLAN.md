@@ -15,29 +15,25 @@
 
 ## Roadmap
 
-### Phase 3: node:vm Executor ⏳ PENDING
+### Phase 3: node:vm Executor ✅ DONE
 
-- [ ] Add `node:vm` executor plugin (`src/builtins/executor-node-vm.ts`)
-- [ ] Create sandboxed context with limited globals
-- [ ] Test with Playwright plugin (closures should work)
-- [ ] Add timeout enforcement
-- [ ] Document escape hatch risks
+- [x] Add `node:vm` executor plugin (`src/builtins/executor-node-vm.ts`)
+- [x] Create sandboxed context with `globalThis` spread (includes all globals)
+- [x] Test with Playwright plugin (closures work)
+- [x] Add timeout enforcement (default 30s, configurable via `NodeVMOptions.timeout`)
+- [x] Document escape hatch risks in JSDoc
 
-### Phase 4: isolated-vm Executor ⏳ PENDING
+**Notes:**
+- Non-enumerable globals (`URL`, `URLSearchParams`) explicitly added since spread operator doesn't copy them
+- Timeout uses `Promise.race` to handle async code properly
 
-- [ ] Add `isolated-vm` dependency to `package.json`
-- [ ] Implement Reference-based property access with `getSync/copySync`
-- [ ] Implement `Callback` for function arguments
-- [ ] Test with Playwright - document closure limitations
-- [ ] Add memory limits and timeout
-
-### Phase 5: Executor Compatibility Documentation ⏳ PENDING
+### Phase 4: Executor Compatibility Documentation ⏳ PENDING
 
 - [ ] Document plugin/executor compatibility matrix
 - [ ] Add executor compatibility validation before execution
 - [ ] Plugin declares requirements: `{ requiresClosures: true }`
 
-### Phase 6: Security Hooks (Optional) ⏳ PENDING
+### Phase 5: Security Hooks (Optional) ⏳ PENDING
 
 - [ ] Add `beforeCall` / `afterCall` hooks for auditing
 - [ ] Add optional pre-call prompts
@@ -53,9 +49,8 @@
 | -------------- | -------- | ---------- | --------------- |
 | `new Function` | ✅ Yes   | ❌ None    | ✅ Direct       |
 | `node:vm`      | ✅ Yes   | ⚠️ Weak    | ✅ Direct       |
-| `isolated-vm`  | ❌ No    | ✅ Isolate | ✅ Sync native  |
 
-**Recommendation:** Playwright plugins use `new Function` or `node:vm`. Simple API clients use `isolated-vm` for security.
+**Recommendation:** Playwright plugins use `new Function` or `node:vm`.
 
 ## Open Questions
 

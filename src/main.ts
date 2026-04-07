@@ -1,4 +1,9 @@
 export { executorNewFn, executorNewFnPlugin } from "./builtins/executor-new-fn.ts"
+export {
+  createNodeVMExecutor,
+  executorNodeVMPlugin,
+  type NodeVMOptions,
+} from "./builtins/executor-node-vm.ts"
 export { consolePlugin } from "./builtins/console.ts"
 export { searchPlugin } from "./builtins/search.ts"
 export {
