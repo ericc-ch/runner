@@ -24,6 +24,7 @@
 - [x] Document escape hatch risks in JSDoc
 
 **Notes:**
+
 - Non-enumerable globals (`URL`, `URLSearchParams`) explicitly added since spread operator doesn't copy them
 - Timeout uses `Promise.race` to handle async code properly
 
@@ -45,10 +46,10 @@
 
 **The Trade-off:** Security (isolation) vs Closures. Cannot have both.
 
-| Runtime        | Closures | Security   | Property Access |
-| -------------- | -------- | ---------- | --------------- |
-| `new Function` | ✅ Yes   | ❌ None    | ✅ Direct       |
-| `node:vm`      | ✅ Yes   | ⚠️ Weak    | ✅ Direct       |
+| Runtime        | Closures | Security | Property Access |
+| -------------- | -------- | -------- | --------------- |
+| `new Function` | ✅ Yes   | ❌ None  | ✅ Direct       |
+| `node:vm`      | ✅ Yes   | ⚠️ Weak  | ✅ Direct       |
 
 **Recommendation:** Playwright plugins use `new Function` or `node:vm`.
 

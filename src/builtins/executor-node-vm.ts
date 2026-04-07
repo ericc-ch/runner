@@ -83,6 +83,8 @@ export function createNodeVMExecutor(options?: NodeVMOptions): Executor {
   }
 }
 
-export const executorNodeVMPlugin = (options?: NodeVMOptions): Plugin => async () => ({
-  executor: createNodeVMExecutor(options),
-})
+export const executorNodeVMPlugin =
+  (options?: NodeVMOptions): Plugin =>
+  async () => ({
+    executor: createNodeVMExecutor(options),
+  })
