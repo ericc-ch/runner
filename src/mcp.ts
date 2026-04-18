@@ -3,7 +3,6 @@ import { Context, Effect, Layer, pipe, Schema } from "effect"
 import { Config } from "./lib/config.ts"
 import { Runner } from "./lib/runner.ts"
 
-
 const ExecuteInput = Schema.Struct({
   code: Schema.String,
 })
