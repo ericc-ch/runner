@@ -9,6 +9,5 @@ export class ExecutionError extends Schema.TaggedErrorClass<ExecutionError>()("E
   cause: Schema.Defect,
 }) {}
 
-/** Shown in `RunOutput.error` when no plugin supplied `hooks.executor`. */
 export const noExecutorConfiguredMessage =
-  'No executor configured. Add a plugin that sets `executor` (e.g. `defaultExecutorPlugin()` from "@ericc-ch/runner").' as const
+  "No executor configured. Add a plugin that sets `executor`." as const

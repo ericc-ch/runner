@@ -116,7 +116,6 @@ describe("executorNodeVM", () => {
 
   describe("timeout", () => {
     it("enforces default timeout (30s)", async () => {
-      // This test just verifies the executor accepts the default timeout
       const output = await executor.execute({
         code: "return 'fast'",
         context: {},
@@ -127,7 +126,6 @@ describe("executorNodeVM", () => {
     it("interrupts synchronous execution on timeout", async () => {
       const fastExecutor = createNodeVMExecutor({ timeout: 50 })
       const output = await fastExecutor.execute({
-        // Infinite synchronous loop - vm timeout will interrupt
         code: "while (true) {}\nreturn 'done'",
         context: {},
       })
@@ -138,7 +136,6 @@ describe("executorNodeVM", () => {
       const fastExecutor = createNodeVMExecutor({ timeout: 50 })
       const arr: number[] = []
       const output = await fastExecutor.execute({
-        // Cooperative abort - code checks abortSignal.aborted
         code: `for (let i = 0; i < 100 && !abortSignal.aborted; i++) {
           arr.push(i)
           await new Promise(r => setTimeout(r, 10))
@@ -147,17 +144,13 @@ describe("executorNodeVM", () => {
         context: { arr },
       })
 
-      // Should have stopped early due to abortSignal
-      // With 50ms timeout and 10ms per iteration, expect ~5 iterations
       assertTrue(output.result !== undefined && (output.result as number) < 100)
-      // Array should not grow after executor returns
       const lengthAfterReturn = arr.length
       await new Promise((r) => setTimeout(r, 100))
       deepStrictEqual(arr.length, lengthAfterReturn)
     })
 
     it("context can override abortSignal if needed", async () => {
-      // User-provided abortSignal takes precedence
       const customSignal = new AbortController().signal
       const output = await executor.execute({
         code: "return abortSignal === customSignal",
