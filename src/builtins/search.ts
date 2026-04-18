@@ -1,4 +1,4 @@
-import type { Plugin, RunInput } from "../lib/types.ts"
+import type { Plugin } from "../lib/types.ts"
 
 interface SearchOptions {
   query?: string
@@ -18,7 +18,7 @@ export const searchPlugin = (): Plugin => async () => {
   let contextRegistry: Record<string, unknown>
 
   return {
-    beforeRun: async (input: RunInput) => {
+    beforeRun: async (input) => {
       contextRegistry = input.context
 
       return {
@@ -40,11 +40,7 @@ export const searchPlugin = (): Plugin => async () => {
                 .slice(0, limit)
                 .map(([name, value]) => {
                   const item = isIndexable(value) ? value : {}
-                  const result: {
-                    name: string
-                    description: string
-                    meta?: unknown
-                  } = {
+                  const result: { name: string; description: string; meta?: unknown } = {
                     name,
                     description: item.description ?? "",
                   }

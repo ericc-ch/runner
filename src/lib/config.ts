@@ -1,5 +1,5 @@
-import { Effect, FileSystem, Layer, Path, Schema, ServiceMap } from "effect"
-import { executorNewFnPlugin } from "../builtins/executor-new-fn.ts"
+import { Context, Effect, FileSystem, Layer, Path, Schema } from "effect"
+import { executorNodeVMPlugin } from "../builtins/executor-node-vm.ts"
 import { consolePlugin } from "../builtins/console.ts"
 import { searchPlugin } from "../builtins/search.ts"
 import { paths } from "./paths.ts"
@@ -38,11 +38,15 @@ export class ConfigSchema extends Schema.Class<ConfigSchema>("ConfigSchema")({
   }
 }
 
-export function defineConfig(config: ConfigSchema): ConfigSchema {
+export function defineConfig(config: ConfigSchema) {
   return config
 }
 
-export class Config extends ServiceMap.Service<Config>()("@ericc-ch/runner/Config", {
+export interface ConfigShape {
+  readonly load: () => Effect.Effect<{ plugins: Array<NormalizedPlugin> }, never, never>
+}
+
+export class Config extends Context.Service<Config, ConfigShape>()("@ericc-ch/runner/Config", {
   make: Effect.gen(function* () {
     const fs = yield* FileSystem.FileSystem
     const path = yield* Path.Path
@@ -57,7 +61,7 @@ export class Config extends ServiceMap.Service<Config>()("@ericc-ch/runner/Confi
       return imported.default
     })
 
-    const builtinPlugins: Plugin[] = [executorNewFnPlugin(), consolePlugin(), searchPlugin()]
+    const builtinPlugins: Plugin[] = [executorNodeVMPlugin(), consolePlugin(), searchPlugin()]
 
     const load = Effect.fn(function* () {
       const cwd = yield* Effect.sync(() => process.cwd())

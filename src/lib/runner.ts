@@ -1,10 +1,16 @@
-import { Effect, Formatter, Layer, ServiceMap } from "effect"
+import { Context, Effect, Formatter, Layer } from "effect"
 import { ExecutionError, HookError, noExecutorConfiguredMessage } from "./errors.ts"
 import type { Executor, NormalizedPlugin, RequiredHooks, RunInput, RunOutput } from "./types.ts"
 
 export { ExecutionError, HookError, noExecutorConfiguredMessage } from "./errors.ts"
 
-export class Runner extends ServiceMap.Service<Runner>()("@ericc-ch/runner/Runner", {
+export interface RunnerShape {
+  readonly init: (plugins: NormalizedPlugin[]) => Effect.Effect<void, never, never>
+  readonly execute: (source: string) => Effect.Effect<RunOutput, HookError, never>
+  readonly teardown: Effect.Effect<void, HookError, never>
+}
+
+export class Runner extends Context.Service<Runner, RunnerShape>()("@ericc-ch/runner/Runner", {
   make: Effect.sync(() => {
     let hooks: RequiredHooks[] = []
     let activeExecutor: Executor | undefined
@@ -25,7 +31,7 @@ export class Runner extends ServiceMap.Service<Runner>()("@ericc-ch/runner/Runne
     const execute = Effect.fn(function* (source: string) {
       const executor = activeExecutor
       if (executor === undefined) {
-        return yield* Effect.succeed<RunOutput>({
+        return yield* Effect.succeed({
           result: undefined,
           error: noExecutorConfiguredMessage,
         })

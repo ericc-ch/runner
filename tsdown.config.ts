@@ -1,6 +1,6 @@
-import { defineConfig, type UserConfigExport } from "tsdown"
+import { defineConfig } from "tsdown"
 
-const config: UserConfigExport = defineConfig({
+export default defineConfig({
   entry: ["src/main.ts", "src/cli.ts"],
 
   target: "esnext",
@@ -9,5 +9,3 @@ const config: UserConfigExport = defineConfig({
   unbundle: true,
   sourcemap: true,
 })
-
-export default config

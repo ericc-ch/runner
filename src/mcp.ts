@@ -1,7 +1,8 @@
 import { McpServer, StdioServerTransport } from "@modelcontextprotocol/server"
-import { Effect, Layer, pipe, Schema, ServiceMap } from "effect"
+import { Context, Effect, Layer, pipe, Schema } from "effect"
 import { Config } from "./lib/config.ts"
 import { Runner } from "./lib/runner.ts"
+
 
 const ExecuteInput = Schema.Struct({
   code: Schema.String,
@@ -12,17 +13,21 @@ const SearchInput = Schema.Struct({
   limit: Schema.optional(Schema.Number),
 })
 
-type ExecuteInputType = Schema.Schema.Type<typeof ExecuteInput>
-type SearchInputType = Schema.Schema.Type<typeof SearchInput>
+type ExecuteInputType = typeof ExecuteInput.Type
+type SearchInputType = typeof SearchInput.Type
 
-export class Mcp extends ServiceMap.Service<Mcp>()("@ericc-ch/runner/Mcp", {
+export interface McpShape {
+  readonly start: () => Effect.Effect<void, unknown, never>
+}
+
+export class Mcp extends Context.Service<Mcp, McpShape>()("@ericc-ch/runner/Mcp", {
   make: Effect.gen(function* () {
     const config = yield* Config
     const runner = yield* Runner
 
     const start = Effect.fn(function* () {
       const loaded = yield* config.load()
-      const services = yield* Effect.services<never>()
+      const services = yield* Effect.context<never>()
 
       yield* runner.init(loaded.plugins)
 
@@ -42,7 +47,7 @@ export class Mcp extends ServiceMap.Service<Mcp>()("@ericc-ch/runner/Mcp", {
           const { code } = args as ExecuteInputType
           const result = await Effect.runPromiseWith(services)(runner.execute(code))
           return {
-            content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+            content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
             isError: result.error !== undefined,
           }
         },
@@ -65,7 +70,7 @@ export class Mcp extends ServiceMap.Service<Mcp>()("@ericc-ch/runner/Mcp", {
             const errorMsg =
               result.error instanceof Error ? result.error.message : JSON.stringify(result.error)
             return {
-              content: [{ type: "text" as const, text: `Error: ${errorMsg}` }],
+              content: [{ type: "text", text: `Error: ${errorMsg}` }],
               isError: true,
             }
           }
@@ -73,7 +78,7 @@ export class Mcp extends ServiceMap.Service<Mcp>()("@ericc-ch/runner/Mcp", {
           return {
             content: [
               {
-                type: "text" as const,
+                type: "text",
                 text: JSON.stringify(result.result, null, 2),
               },
             ],

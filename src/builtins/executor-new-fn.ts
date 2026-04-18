@@ -1,20 +1,16 @@
 import { transformSync } from "amaro"
 import { Formatter } from "effect"
-import type { Executor, ExecutorInput, Plugin, RunOutput } from "../lib/types.ts"
+import type { Executor, Plugin } from "../lib/types.ts"
 import { ExecutionError } from "../lib/errors.ts"
 
 export const executorNewFn: Executor = {
   name: "executorNewFn",
-  async execute({ code, context }: ExecutorInput): Promise<RunOutput> {
+  async execute({ code, context }) {
     try {
       const params = Object.keys(context)
       const values = Object.values(context)
 
-      // Wrap code in async function before stripping TypeScript
-      // This makes top-level return statements valid
       const wrappedCode = `(async () => {\n${code}\n})()`
-
-      // Strip TypeScript annotations
       const { code: strippedCode } = transformSync(wrappedCode, {
         mode: "strip-only",
       })
