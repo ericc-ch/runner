@@ -2,7 +2,7 @@ import { Formatter } from "effect"
 import type { Plugin } from "../lib/types.ts"
 
 export const consolePlugin = (): Plugin => async () => {
-  let logs: string[]
+  let logs: Array<string>
 
   return {
     beforeRun: async () => {
@@ -11,11 +11,11 @@ export const consolePlugin = (): Plugin => async () => {
         context: {
           console: Object.assign(
             {
-              log: (...args: unknown[]) =>
+              log: (...args: Array<unknown>) =>
                 logs.push(args.map((arg) => Formatter.format(arg)).join(" ")),
-              error: (...args: unknown[]) =>
+              error: (...args: Array<unknown>) =>
                 logs.push("[ERROR] " + args.map((arg) => Formatter.format(arg)).join(" ")),
-              warn: (...args: unknown[]) =>
+              warn: (...args: Array<unknown>) =>
                 logs.push("[WARN] " + args.map((arg) => Formatter.format(arg)).join(" ")),
             },
             { description: "Captured console for logging" },

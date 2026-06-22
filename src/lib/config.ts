@@ -6,7 +6,7 @@ import { paths } from "./paths.ts"
 import type { NormalizedPlugin, Plugin } from "./types.ts"
 
 export class ConfigLoadError extends Schema.TaggedErrorClass<ConfigLoadError>()("ConfigLoadError", {
-  cause: Schema.Defect,
+  cause: Schema.Defect(),
 }) {}
 
 const isPlugin = (u: unknown): u is Plugin => typeof u === "function"
@@ -61,7 +61,7 @@ export class Config extends Context.Service<Config, ConfigShape>()("@ericc-ch/ru
       return imported.default
     })
 
-    const builtinPlugins: Plugin[] = [executorNodeVMPlugin(), consolePlugin(), searchPlugin()]
+    const builtinPlugins: Array<Plugin> = [executorNodeVMPlugin(), consolePlugin(), searchPlugin()]
 
     const load = Effect.fn(function* () {
       const cwd = yield* Effect.sync(() => process.cwd())
@@ -95,7 +95,7 @@ export class Config extends Context.Service<Config, ConfigShape>()("@ericc-ch/ru
 
       // Built-in plugins first, then global, then local
       // Last executor wins, so user plugins can override built-ins
-      const allPlugins: Plugin[] = [
+      const allPlugins: Array<Plugin> = [
         ...(disableBuiltin ? [] : builtinPlugins),
         ...(global.plugins ?? []),
         ...(local.plugins ?? []),

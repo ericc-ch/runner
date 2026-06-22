@@ -2,11 +2,11 @@ import { Schema } from "effect"
 
 export class HookError extends Schema.TaggedErrorClass<HookError>()("HookError", {
   hook: Schema.String,
-  cause: Schema.Defect,
+  cause: Schema.Defect(),
 }) {}
 
 export class ExecutionError extends Schema.TaggedErrorClass<ExecutionError>()("ExecutionError", {
-  cause: Schema.Defect,
+  cause: Schema.Defect(),
 }) {}
 
 export const noExecutorConfiguredMessage =

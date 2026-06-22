@@ -5,7 +5,7 @@ import { ChildProcess } from "effect/unstable/process"
 import { NodeRuntime, NodeServices } from "@effect/platform-node"
 import { Effect, Stream } from "effect"
 
-const runCommand = (cmd: string, args: string[]) =>
+const runCommand = (cmd: string, args: Array<string>) =>
   Effect.gen(function* () {
     const handle = yield* ChildProcess.make(cmd, args)
     const chunks = yield* Stream.runCollect(handle.stdout)

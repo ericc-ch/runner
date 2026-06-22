@@ -39,7 +39,7 @@
     "format": "oxfmt",
     "lint": "oxlint --type-aware",
     "check": "pnpm run typecheck && pnpm run test && pnpm run lint",
-    "prepare": "simple-git-hooks && effect-language-service patch",
+    "prepare": "simple-git-hooks && effect-language-service patch && node scripts/references.ts",
     "prepack": "pnpm run build",
     "release": "bumpp && npm publish",
     "start": "node src/cli.ts",
@@ -47,28 +47,27 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@effect/platform-node": "^4.0.0-beta.50",
+    "@effect/platform-node": "^4.0.0-beta.78",
     "@modelcontextprotocol/server": "2.0.0-alpha.2",
     "amaro": "^1.1.8",
-    "effect": "^4.0.0-beta.50",
+    "effect": "^4.0.0-beta.78",
     "env-paths": "^4.0.0"
   },
   "devDependencies": {
-    "@effect/language-service": "^0.85.1",
-    "@effect/vitest": "^4.0.0-beta.50",
-    "@types/node": "24.x.x",
+    "@effect/language-service": "^0.86.2",
+    "@effect/vitest": "^4.0.0-beta.78",
+    "@types/node": "^25.9.2",
     "bumpp": "^11.0.1",
-    "oxfmt": "^0.45.0",
-    "oxlint": "^1.60.0",
-    "oxlint-tsgolint": "^0.21.1",
-    "prettier": "^3.8.3",
+    "oxfmt": "^0.53.0",
+    "oxlint": "^1.68.0",
+    "oxlint-tsgolint": "^0.22.1",
     "simple-git-hooks": "^2.13.1",
     "tsdown": "^0.21.9",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.8"
   },
   "simple-git-hooks": {
-    "pre-commit": "pnpm run format",
+    "pre-commit": "pnpm run check",
     "pre-push": "pnpm run check"
   },
   "packageManager": "pnpm@10.33.0"

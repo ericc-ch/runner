@@ -1,12 +1,19 @@
-# Package Manager
+TypeScript execution engine for AI agents. Plugins inject context (browser, DB, APIs) into an MCP `execute`/`search` surface.
 
-Uses pnpm.
+Uses pnpm. Run `pnpm run check` after completing any work.
 
-# Post-Work Checklist
+# References Directory
 
-Run `pnpm run check` after completing any work.
+The `.references/` directory contains shallow clones of important external repositories.
+Never make any changes in this directory; it is ignored by git and meant as reference only.
 
-# Effect v4 Documentation
+Prefer exploring and reading this directory over searching for documentation.
 
-Clone https://github.com/Effect-TS/effect-smol to /tmp (shallow), then read from there.
-Deep dive: open linked files in migration/ and ai-docs/src/, read \*.ts examples, check migration guides.
+Available references:
+
+- effect-smol — Effect v4
+- playwright — Playwright
+
+## Idiomatic Effect (v4)
+
+Use `.references/effect-smol` as the source of truth (also `ai-docs/` inside it for patterns).

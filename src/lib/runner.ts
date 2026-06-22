@@ -5,17 +5,17 @@ import type { Executor, NormalizedPlugin, RequiredHooks, RunInput, RunOutput } f
 export { ExecutionError, HookError, noExecutorConfiguredMessage } from "./errors.ts"
 
 export interface RunnerShape {
-  readonly init: (plugins: NormalizedPlugin[]) => Effect.Effect<void, never, never>
+  readonly init: (plugins: Array<NormalizedPlugin>) => Effect.Effect<void, never, never>
   readonly execute: (source: string) => Effect.Effect<RunOutput, HookError, never>
   readonly teardown: Effect.Effect<void, HookError, never>
 }
 
 export class Runner extends Context.Service<Runner, RunnerShape>()("@ericc-ch/runner/Runner", {
   make: Effect.sync(() => {
-    let hooks: RequiredHooks[] = []
+    let hooks: Array<RequiredHooks> = []
     let activeExecutor: Executor | undefined
 
-    const init = Effect.fn(function* (plugins: NormalizedPlugin[]) {
+    const init = Effect.fn(function* (plugins: Array<NormalizedPlugin>) {
       const resolved = yield* Effect.forEach(plugins, (plugin) => Effect.promise(plugin))
 
       const lastWithExecutor = resolved.findLast((h) => h.executor !== undefined)

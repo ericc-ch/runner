@@ -134,7 +134,7 @@ describe("executorNodeVM", () => {
 
     it("provides abortSignal for cooperative abort in async loops", async () => {
       const fastExecutor = createNodeVMExecutor({ timeout: 50 })
-      const arr: number[] = []
+      const arr: Array<number> = []
       const output = await fastExecutor.execute({
         code: `for (let i = 0; i < 100 && !abortSignal.aborted; i++) {
           arr.push(i)
