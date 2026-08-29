@@ -13,6 +13,9 @@ Available references:
 
 - effect-smol — Effect v4
 - playwright — Playwright
+- executor — RhysSullivan/executor (pause/elicitation, tool sandbox)
+- playwriter — remorses/playwriter
+- agent-browser — vercel-labs/agent-browser
 
 ## Idiomatic Effect (v4)
 

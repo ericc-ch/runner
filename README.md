@@ -138,7 +138,7 @@ export default defineConfig({
 
 Plugin hooks:
 
-- `executor` - How user code runs (first plugin that sets this wins). Use `defaultExecutorPlugin()` unless you supply your own `Executor`.
+- `executor` - How user code runs (last plugin that sets this wins). The built-in Node VM executor is registered automatically unless you disable built-in plugins or override it.
 - `teardown` - Cleanup plugin (runs once)
 - `beforeRun` - Inject context before each execution
 - `afterRun` - Process output after each execution
@@ -154,14 +154,14 @@ Optional helpers (exported from the package; add them to `plugins` if you want t
 - `searchPlugin` — powers the MCP `search` tool and `search()` in execute context
 
 ```typescript
-import { consolePlugin, defaultExecutorPlugin, defineConfig, searchPlugin } from "@ericc-ch/runner"
+import { consolePlugin, defineConfig, executorNodeVMPlugin, searchPlugin } from "@ericc-ch/runner"
 
 export default defineConfig({
-  plugins: [defaultExecutorPlugin(), consolePlugin(), searchPlugin()],
+  plugins: [executorNodeVMPlugin(), consolePlugin(), searchPlugin()],
 })
 ```
 
-You must register an **executor** (e.g. `defaultExecutorPlugin()` for the built-in `new Function` runner). Without it, `execute` returns an error.
+Built-in plugins (`executorNodeVMPlugin`, `consolePlugin`, `searchPlugin`) load automatically. Add your own plugins to extend context; use `disableBuiltinPlugins: true` to replace them entirely.
 
 ## Security
 

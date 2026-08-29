@@ -150,13 +150,13 @@ describe("executorNodeVM", () => {
       deepStrictEqual(arr.length, lengthAfterReturn)
     })
 
-    it("context can override abortSignal if needed", async () => {
+    it("pins abortSignal so context cannot override it", async () => {
       const customSignal = new AbortController().signal
       const output = await executor.execute({
         code: "return abortSignal === customSignal",
         context: { abortSignal: customSignal, customSignal },
       })
-      deepStrictEqual(output.result, true)
+      deepStrictEqual(output.result, false)
     })
   })
 

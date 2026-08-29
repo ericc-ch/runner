@@ -1,4 +1,3 @@
-export { executorNewFn, executorNewFnPlugin } from "./builtins/executor-new-fn.ts"
 export {
   createNodeVMExecutor,
   executorNodeVMPlugin,

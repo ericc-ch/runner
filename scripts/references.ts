@@ -22,6 +22,21 @@ const repositories = [
     directory: "playwright",
     url: "https://github.com/microsoft/playwright.git",
   },
+  {
+    name: "Executor",
+    directory: "executor",
+    url: "https://github.com/RhysSullivan/executor.git",
+  },
+  {
+    name: "Playwriter",
+    directory: "playwriter",
+    url: "https://github.com/remorses/playwriter.git",
+  },
+  {
+    name: "Agent Browser",
+    directory: "agent-browser",
+    url: "https://github.com/vercel-labs/agent-browser.git",
+  },
 ] satisfies ReadonlyArray<ReferenceRepository>
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
